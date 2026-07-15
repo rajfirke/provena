@@ -246,6 +246,7 @@ class TestCLIVersion:
         assert result.returncode == 0
         assert "0.5.0" in result.stdout
 
+
 class TestCLIHelp:
     def test_help(self):
         runner = CliRunner()
