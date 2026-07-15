@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 import tempfile
 
 from click.testing import CliRunner
@@ -234,6 +236,15 @@ class TestCLIVersion:
         assert result.exit_code == 0
         assert "0.5.0" in result.output
 
+    def test_python_module_version(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "provena", "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0
+        assert "0.5.0" in result.stdout
 
 class TestCLIHelp:
     def test_help(self):
