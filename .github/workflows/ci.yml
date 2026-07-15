@@ -26,7 +26,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,cli,otel]"
+          pip install opentelemetry-sdk
       - name: Lint
         run: ruff check src/ tests/
       - name: Format check
