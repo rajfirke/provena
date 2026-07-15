@@ -1,0 +1,96 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "provena"
+version = "0.5.0"
+description = "Context governance for agentic AI — tamper-evident audit trails for LLM context inputs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [
+    { name = "Raj Firke" },
+]
+keywords = [
+    "ai", "llm", "governance", "audit", "context",
+    "provenance", "eu-ai-act", "owasp", "agentic",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
+cli = ["click>=8.0", "rich>=13.0"]
+otel = ["opentelemetry-api>=1.20"]
+langchain = ["langchain-core>=0.2"]
+llamaindex = ["llama-index-core>=0.10"]
+all = ["provena[yaml,cli,otel]"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+provena = "provena.cli.main:cli"
+
+[project.urls]
+Homepage = "https://github.com/rajfirke/provena"
+Source = "https://github.com/rajfirke/provena"
+Issues = "https://github.com/rajfirke/provena/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/provena"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]
+asyncio_mode = "auto"
+
+[tool.ruff]
+src = ["src", "tests"]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "W", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["provena"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.coverage.run]
+source = ["provena"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+]
