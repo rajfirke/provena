@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
+from typing import Any
 
 import click
 
@@ -190,7 +191,7 @@ def summary(ctx: click.Context) -> None:
         trail.close()
 
 
-def _print_table(records: list[dict]) -> None:
+def _print_table(records: list[dict[str, Any]]) -> None:
     try:
         import rich  # noqa: F401
 
@@ -199,7 +200,7 @@ def _print_table(records: list[dict]) -> None:
         _print_plain_table(records)
 
 
-def _print_rich_table(records: list[dict]) -> None:
+def _print_rich_table(records: list[dict[str, Any]]) -> None:
     from rich.console import Console
     from rich.table import Table
 
@@ -238,7 +239,7 @@ def _print_rich_table(records: list[dict]) -> None:
     Console().print(table)
 
 
-def _print_plain_table(records: list[dict]) -> None:
+def _print_plain_table(records: list[dict[str, Any]]) -> None:
     header = f"{'ID':>5}  {'Timestamp':20s}  {'Source':12s}  {'Name':15s}  {'Hash':12s}  {'Prov':12s}  {'Fresh':7s}"
     click.echo(header)
     click.echo("-" * len(header))
@@ -254,7 +255,7 @@ def _print_plain_table(records: list[dict]) -> None:
         )
 
 
-def _format_text_report(data: dict) -> str:
+def _format_text_report(data: dict[str, Any]) -> str:
     lines = [
         "=" * 50,
         "PROVENA GOVERNANCE REPORT",

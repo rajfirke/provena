@@ -136,7 +136,7 @@ class SQLiteBackend:
     def count(self) -> int:
         with self._lock:
             row = self._conn.execute("SELECT COUNT(*) FROM trail").fetchone()
-            return row[0]
+            return int(row[0])
 
     def all_records(self) -> list[dict[str, Any]]:
         with self._lock:

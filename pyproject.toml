@@ -85,6 +85,17 @@ warn_unused_configs = true
 module = "tests.*"
 disallow_untyped_defs = false
 
+[[tool.mypy.overrides]]
+module = [
+    "click.*",
+    "rich.*",
+    "opentelemetry.*",
+    "langchain_core.*",
+    "llama_index.*",
+    "pydantic.*",
+]
+ignore_missing_imports = true
+
 [tool.coverage.run]
 source = ["provena"]
 branch = true

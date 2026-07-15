@@ -71,13 +71,14 @@ class ContextTrail:
             service_name=otel_service_name,
         )
 
+        self._backend: InMemoryBackend | SQLiteBackend
         if _DISABLED or backend == "memory":
             self._backend = InMemoryBackend()
         else:
             self._backend = SQLiteBackend(path=storage_path)
 
         last = self._backend.get_last()
-        self._previous_hash = last["chain_hash"] if last else GENESIS_HASH
+        self._previous_hash: str = last["chain_hash"] if last else GENESIS_HASH
 
     def _apply_config(self, config: dict[str, Any]) -> None:
         storage = config.get("storage", {})
@@ -117,7 +118,7 @@ class ContextTrail:
             self._backend = SQLiteBackend(path=storage.get("path", "provena.db"))
 
         last = self._backend.get_last()
-        self._previous_hash = last["chain_hash"] if last else GENESIS_HASH
+        self._previous_hash = str(last["chain_hash"]) if last else GENESIS_HASH
 
     @property
     def error_count(self) -> int:
@@ -145,7 +146,8 @@ class ContextTrail:
                 metadata=metadata,
             )
         except Exception as exc:
-            return self._handle_error(exc)
+            self._handle_error(exc)
+            return None
 
     def _log_internal(
         self,
@@ -170,8 +172,9 @@ class ContextTrail:
         fresh_result = self._freshness.check(entry, content=content_str)
 
         with self._lock:
+            prev_hash = self._previous_hash
             chain_hash = self._hasher.compute_chain_hash(
-                previous_hash=self._previous_hash,
+                previous_hash=prev_hash,
                 content_hash=entry.content_hash,
                 source=entry.source.value,
                 timestamp=entry.timestamp.isoformat(),
@@ -189,7 +192,7 @@ class ContextTrail:
                 "missing_fields": ",".join(prov_result.missing_fields),
                 "freshness_status": fresh_result.status,
                 "chain_hash": chain_hash,
-                "previous_hash": self._previous_hash,
+                "previous_hash": prev_hash,
                 "metadata_json": json.dumps(entry.metadata),
                 "content_type": entry.content_type,
                 "truncated": entry.truncated,
@@ -204,7 +207,7 @@ class ContextTrail:
             provenance_result=prov_result,
             freshness_result=fresh_result,
             chain_hash=chain_hash,
-            previous_hash=record_data["previous_hash"],
+            previous_hash=prev_hash,
         )
 
         self._emit_otel(trail_record)
