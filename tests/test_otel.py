@@ -210,7 +210,9 @@ class TestOTelTrailIntegration:
         trail._otel._tracer.start_span.side_effect = RuntimeError("OTel exploded")
 
         record = trail.log("should not crash", source="retriever")
-        assert record is None or record is not None
+        assert record is not None
+        assert record.entry.content_hash
+        assert trail.summary()["total"] == 1
         trail.close()
 
     def test_otel_config_dict(self):
