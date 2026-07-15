@@ -12,7 +12,7 @@ try:
     from llama_index.core.schema import NodeWithScore, QueryBundle
     from pydantic import ConfigDict
 
-    class ProvenaPostprocessor(BaseNodePostprocessor):  # type: ignore[misc]
+    class ProvenaPostprocessor(BaseNodePostprocessor):
         """LlamaIndex postprocessor that logs retrieved nodes to a Provena trail.
 
         Usage::
