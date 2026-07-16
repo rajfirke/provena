@@ -82,6 +82,86 @@ class TestCLIAudit:
         finally:
             os.unlink(db_path)
 
+    def test_audit_from_date(self):
+        db_path = _create_trail_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "--db",
+                    db_path,
+                    "audit",
+                    "--from",
+                    "2020-01-01",
+                    "--format",
+                    "json",
+                ],
+            )
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert len(data) == 3
+        finally:
+            os.unlink(db_path)
+
+    def test_audit_to_date(self):
+        db_path = _create_trail_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "--db",
+                    db_path,
+                    "audit",
+                    "--to",
+                    "2020-01-01",
+                    "--format",
+                    "json",
+                ],
+            )
+            assert result.exit_code == 0
+            assert "No records found." in result.output
+        finally:
+            os.unlink(db_path)
+
+    def test_audit_date_range(self):
+        db_path = _create_trail_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "--db",
+                    db_path,
+                    "audit",
+                    "--from",
+                    "2020-01-01",
+                    "--to",
+                    "2030-01-01",
+                    "--format",
+                    "json",
+                ],
+            )
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert len(data) == 3
+        finally:
+            os.unlink(db_path)
+
+    def test_audit_invalid_date(self):
+        db_path = _create_trail_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                ["--db", db_path, "audit", "--from", "not-a-date"],
+            )
+            assert result.exit_code != 0
+            assert "Invalid value for '--from'" in result.output
+        finally:
+            os.unlink(db_path)
+
     def test_audit_empty_db(self):
         db_path = _create_trail_db(0)
         try:

@@ -37,6 +37,20 @@ def cli(ctx: click.Context, db: str, signing_key: str | None) -> None:
 @click.option("--source", "-s", default=None, help="Filter by source type.")
 @click.option("--limit", "-n", default=20, type=int, help="Max records to show.")
 @click.option(
+    "--from",
+    "start",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    default=None,
+    help="Filter records from this date (YYYY-MM-DD).",
+)
+@click.option(
+    "--to",
+    "end",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    default=None,
+    help="Filter records up to this date (YYYY-MM-DD).",
+)
+@click.option(
     "--format",
     "fmt",
     default="table",
@@ -44,7 +58,14 @@ def cli(ctx: click.Context, db: str, signing_key: str | None) -> None:
     help="Output format.",
 )
 @click.pass_context
-def audit(ctx: click.Context, source: str | None, limit: int, fmt: str) -> None:
+def audit(
+    ctx: click.Context,
+    source: str | None,
+    limit: int,
+    start: datetime | None,
+    end: datetime | None,
+    fmt: str,
+) -> None:
     """Query the context governance audit log."""
     db_path = ctx.obj["db"]
     if not os.path.exists(db_path):
@@ -54,7 +75,7 @@ def audit(ctx: click.Context, source: str | None, limit: int, fmt: str) -> None:
 
     trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
     try:
-        records = trail.query(source=source, limit=limit)
+        records = trail.query(source=source, limit=limit, start=start, end=end)
 
         if not records:
             click.echo("No records found.")
