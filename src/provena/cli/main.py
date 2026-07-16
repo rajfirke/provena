@@ -105,7 +105,7 @@ def verify(ctx: click.Context) -> None:
     "--format",
     "fmt",
     default="json",
-    type=click.Choice(["json", "text"]),
+   type=click.Choice(["json", "text", "csv"]),
     help="Output format.",
 )
 @click.option("--output", "-o", default=None, type=click.Path(), help="Write to file.")
@@ -140,6 +140,8 @@ def report(ctx: click.Context, fmt: str, output: str | None) -> None:
 
         if fmt == "json":
             content = json.dumps(report_data, indent=2)
+        elif fmt == "csv":
+            content = trail.export(format="csv")
         else:
             content = _format_text_report(report_data)
 

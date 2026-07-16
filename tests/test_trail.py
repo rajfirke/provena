@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import json
 import os
 import sqlite3
@@ -343,7 +345,6 @@ class TestContextTrailHealth:
         h = memory_trail.health()
         assert h["record_count"] == 1
 
-
 class TestContextTrailExport:
     def test_export_json(self, memory_trail):
         memory_trail.log("test", source="retriever")
@@ -351,6 +352,25 @@ class TestContextTrailExport:
         data = json.loads(exported)
         assert len(data) == 1
         assert data[0]["content_hash"]
+
+    def test_export_csv(self, memory_trail):
+        memory_trail.log("first", source="retriever", source_name="source_1")
+        memory_trail.log("second", source="tool:api", source_name="source_2")
+
+        exported = memory_trail.export(format="csv")
+        rows = list(csv.reader(io.StringIO(exported)))
+
+        assert rows[0] == [
+            "id",
+            "timestamp",
+            "source",
+            "source_name",
+            "content_hash",
+            "provenance_status",
+            "freshness_status",
+            "chain_hash",
+        ]
+        assert len(rows) == 3
 
 
 class TestContextTrailSigning:
