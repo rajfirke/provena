@@ -192,6 +192,37 @@ class TestCLIReport:
             os.unlink(db_path)
             os.unlink(out_path)
 
+    def test_report_csv_to_file(self):
+        db_path = _create_trail_db()
+        with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+            out_path = f.name
+
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "--db",
+                    db_path,
+                    "report",
+                    "--format",
+                    "csv",
+                    "--output",
+                    out_path,
+                ],
+            )
+            assert result.exit_code == 0
+            assert "written to" in result.output
+
+            with open(out_path) as f:
+                content = f.read()
+
+            assert "id,timestamp,source,source_name,content_hash" in content
+            assert "src_0" in content
+        finally:
+            os.unlink(db_path)
+            os.unlink(out_path)
+
     def test_report_missing_db(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["--db", "/nonexistent/path.db", "report"])

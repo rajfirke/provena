@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import csv
 import functools
 import inspect
+import io
 import json
 import logging
 import os
@@ -417,8 +419,30 @@ class ContextTrail:
 
     def export(self, format: str = "json") -> str:
         records = self._backend.all_records()
+
         if format == "json":
             return json.dumps(records, indent=2, default=str)
+
+        if format == "csv":
+            output = io.StringIO()
+            fieldnames = [
+                "id",
+                "timestamp",
+                "source",
+                "source_name",
+                "content_hash",
+                "provenance_status",
+                "freshness_status",
+                "chain_hash",
+            ]
+            writer = csv.writer(output)
+            writer.writerow(fieldnames)
+
+            for record in records:
+                writer.writerow([record.get(field, "") for field in fieldnames])
+
+            return output.getvalue()
+
         return json.dumps(records, default=str)
 
     def health(self) -> dict[str, Any]:
