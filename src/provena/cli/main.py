@@ -105,7 +105,7 @@ def verify(ctx: click.Context) -> None:
     "--format",
     "fmt",
     default="json",
-   type=click.Choice(["json", "text", "csv"]),
+    type=click.Choice(["json", "text", "csv"]),
     help="Output format.",
 )
 @click.option("--output", "-o", default=None, type=click.Path(), help="Write to file.")

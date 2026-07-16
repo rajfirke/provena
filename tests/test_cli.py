@@ -228,6 +228,7 @@ class TestCLIReport:
         result = runner.invoke(cli, ["--db", "/nonexistent/path.db", "report"])
         assert result.exit_code != 0
 
+
 class TestCLISummary:
     def test_summary(self):
         db_path = _create_trail_db()

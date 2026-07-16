@@ -345,6 +345,7 @@ class TestContextTrailHealth:
         h = memory_trail.health()
         assert h["record_count"] == 1
 
+
 class TestContextTrailExport:
     def test_export_json(self, memory_trail):
         memory_trail.log("test", source="retriever")
