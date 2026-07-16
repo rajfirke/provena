@@ -278,6 +278,25 @@ class TestContextTrailQuery:
         results = memory_trail.query(limit=3)
         assert len(results) == 3
 
+    def test_query_by_governance_status(self, memory_trail):
+        memory_trail.log("missing", source="retriever")
+        memory_trail.log(
+            "valid and fresh",
+            source="retriever",
+            provenance=ProvenanceMetadata(
+                source_url="https://example.com",
+                created_at=datetime.now(timezone.utc),
+            ),
+        )
+
+        missing = memory_trail.query(provenance_status="MISSING")
+        assert len(missing) == 1
+        assert missing[0]["provenance_status"] == "MISSING"
+
+        fresh = memory_trail.query(freshness_status="FRESH")
+        assert len(fresh) == 1
+        assert fresh[0]["freshness_status"] == "FRESH"
+
 
 class TestContextTrailAnnotate:
     def test_annotate_record(self, memory_trail):

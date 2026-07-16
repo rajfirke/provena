@@ -4,6 +4,8 @@ import os
 import tempfile
 from datetime import datetime, timezone
 
+import pytest
+
 from provena.storage import SQLiteBackend
 
 
@@ -16,6 +18,7 @@ def _make_record(**overrides):
         "provenance_json": None,
         "provenance_status": "MISSING",
         "missing_fields": "source_url,created_at",
+        "freshness_status": "UNKNOWN",
         "chain_hash": "chain_abc",
         "previous_hash": "prev_abc",
         "config_hash": "",
@@ -25,6 +28,51 @@ def _make_record(**overrides):
     }
     base.update(overrides)
     return base
+
+
+@pytest.mark.parametrize("backend_fixture", ["memory_backend", "sqlite_backend"])
+def test_query_by_governance_status(request, backend_fixture):
+    backend = request.getfixturevalue(backend_fixture)
+    backend.append(
+        _make_record(
+            content_hash="missing-stale",
+            provenance_status="MISSING",
+            freshness_status="STALE",
+        )
+    )
+    backend.append(
+        _make_record(
+            content_hash="valid-fresh",
+            provenance_status="VALID",
+            freshness_status="FRESH",
+        )
+    )
+    backend.append(
+        _make_record(
+            content_hash="missing-fresh",
+            provenance_status="MISSING",
+            freshness_status="FRESH",
+        )
+    )
+
+    missing = backend.query(provenance_status="MISSING")
+    assert [record["content_hash"] for record in missing] == [
+        "missing-stale",
+        "missing-fresh",
+    ]
+
+    fresh = backend.query(freshness_status="FRESH")
+    assert [record["content_hash"] for record in fresh] == [
+        "valid-fresh",
+        "missing-fresh",
+    ]
+
+    combined = backend.query(
+        provenance_status="MISSING", freshness_status="FRESH", limit=1
+    )
+    assert [record["content_hash"] for record in combined] == ["missing-fresh"]
+
+    assert backend.query(provenance_status="missing") == []
 
 
 class TestInMemoryBackend:

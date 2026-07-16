@@ -51,6 +51,8 @@ class StorageBackend(Protocol):
         source: str | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
+        provenance_status: str | None = None,
+        freshness_status: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]: ...
     def add_annotation(
@@ -149,6 +151,8 @@ class SQLiteBackend:
         source: str | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
+        provenance_status: str | None = None,
+        freshness_status: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         clauses: list[str] = []
@@ -163,6 +167,12 @@ class SQLiteBackend:
         if end is not None:
             clauses.append("timestamp <= ?")
             params.append(end.isoformat())
+        if provenance_status is not None:
+            clauses.append("provenance_status = ?")
+            params.append(provenance_status)
+        if freshness_status is not None:
+            clauses.append("freshness_status = ?")
+            params.append(freshness_status)
 
         where = " AND ".join(clauses) if clauses else "1=1"
         sql = f"SELECT * FROM trail WHERE {where} ORDER BY id ASC LIMIT ?"
@@ -224,6 +234,8 @@ class InMemoryBackend:
         source: str | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
+        provenance_status: str | None = None,
+        freshness_status: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         with self._lock:
@@ -236,6 +248,18 @@ class InMemoryBackend:
         if end is not None:
             end_iso = end.isoformat()
             results = [r for r in results if r["timestamp"] <= end_iso]
+        if provenance_status is not None:
+            results = [
+                r
+                for r in results
+                if r.get("provenance_status", "MISSING") == provenance_status
+            ]
+        if freshness_status is not None:
+            results = [
+                r
+                for r in results
+                if r.get("freshness_status", "UNKNOWN") == freshness_status
+            ]
         return [{**r} for r in results[:limit]]
 
     def add_annotation(

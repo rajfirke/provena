@@ -4,6 +4,11 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `ContextTrail.query()` filters for exact provenance and freshness status values
+
 ## [0.5.0] - 2026-07-15
 
 ### Added
