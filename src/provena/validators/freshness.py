@@ -40,7 +40,7 @@ _QUARTER_START = {1: 1, 2: 4, 3: 7, 4: 10}
 class _TemporalPatterns:
     """Pre-compiled regex patterns for temporal detection in content."""
 
-    __slots__ = ("half_year", "iso_date", "month_year", "quarter", "year_context")
+    __slots__ = ("half_year", "iso_date", "month_year", "quarter", "year_context","update_marker",)
 
     def __init__(self) -> None:
         # 2023-06-15 or 2023/06/15
@@ -59,7 +59,13 @@ class _TemporalPatterns:
         self.year_context = re.compile(
             r"\b(?:as\s+of|since|circa|from|during)\s+(20\d{2})\b", re.IGNORECASE
         )
-
+        # "last updated: March 2024", "published on 2024-01-15",
+        # "revised December 2023", "effective date: 2024-03-01"
+        self.update_marker = re.compile(
+            rf"\b(?:last\s+updated:|published\s+on|revised|effective\s+date:)\s+"
+            rf"(({_MONTH_NAMES})\s+(20\d{{2}})|(20\d{{2}}[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])))",
+            re.IGNORECASE,
+        )
 
 _PATTERNS = _TemporalPatterns()
 
@@ -186,6 +192,26 @@ class FreshnessChecker:
             dt = _safe_date(year, 1, 1)
             if dt:
                 dates.append(dt)
+
+        for m in _PATTERNS.update_marker.finditer(content):
+            if m.group(2):
+                month_num = _MONTH_MAP.get(m.group(2).lower())
+                year = int(m.group(3))
+                if month_num:
+                    dt = _safe_date(year, month_num, 1)
+                    if dt:
+                        dates.append(dt)
+            else:
+                iso_match = _PATTERNS.iso_date.search(m.group(1))
+                if iso_match:
+                    year, month, day = (
+                        int(iso_match.group(1)),
+                        int(iso_match.group(2)),
+                        int(iso_match.group(3)),
+                    )
+                    dt = _safe_date(year, month, day)
+                    if dt:
+                        dates.append(dt)
 
         return dates
 

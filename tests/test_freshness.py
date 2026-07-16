@@ -146,6 +146,52 @@ class TestFreshnessCheckerTemporal:
         result = checker.check(entry, content=content, now=now)
         assert result.status == "FRESH"
 
+    def test_last_updated_marker(self):
+        now = datetime(2026, 7, 13, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        content = "Last updated: March 2024."
+        entry = _entry(content=content)
+        result = checker.check(entry, content=content, now=now)
+        assert result.status == "STALE"
+        assert result.detected_date is not None
+        assert result.detected_date.month == 3
+        assert result.detected_date.year == 2024
+
+    def test_published_on_marker(self):
+        now = datetime(2026, 7, 13, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        content = "Published on 2024-01-15."
+        entry = _entry(content=content)
+        result = checker.check(entry, content=content, now=now)
+        assert result.status == "STALE"
+        assert result.detected_date is not None
+        assert result.detected_date.year == 2024
+        assert result.detected_date.month == 1
+        assert result.detected_date.day == 15
+
+    def test_revised_marker(self):
+        now = datetime(2026, 7, 13, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        content = "Revised December 2023."
+        entry = _entry(content=content)
+        result = checker.check(entry, content=content, now=now)
+        assert result.status == "STALE"
+        assert result.detected_date is not None
+        assert result.detected_date.month == 12
+        assert result.detected_date.year == 2023
+
+    def test_effective_date_marker(self):
+        now = datetime(2026, 7, 13, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        content = "Effective date: 2024-03-01."
+        entry = _entry(content=content)
+        result = checker.check(entry, content=content, now=now)
+        assert result.status == "STALE"
+        assert result.detected_date is not None
+        assert result.detected_date.year == 2024
+        assert result.detected_date.month == 3
+        assert result.detected_date.day == 1
+
     def test_quarter_stale(self):
         now = datetime(2026, 7, 13, tzinfo=timezone.utc)
         checker = FreshnessChecker(max_age_days=90)
