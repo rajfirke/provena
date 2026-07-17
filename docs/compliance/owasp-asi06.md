@@ -55,7 +55,7 @@ from provena import ContextTrail
 
 trail = ContextTrail(
     required_fields=["source_url", "author", "created_at"],
-    strict_mode=True,  # Reject unverified context
+    strict_mode=True,  # Raise on internal governance errors
 )
 
 # Context from a verified source -- accepted
@@ -77,8 +77,8 @@ record = trail.log(
     source="retriever",
     # No provenance metadata provided
 )
-# In strict_mode: raises exception
-# In default mode: record.provenance_result.status -> "MISSING"
+# record.provenance_result.status -> "MISSING"
+# The record is still logged -- provenance status flags the gap for review
 ```
 
 ### 2. Memory Integrity Attacks
@@ -183,7 +183,7 @@ forward, identifying the exact record where integrity was broken.
 
 **Framework-agnostic design works across all agent types.** Provena governs
 context at the data layer, not the framework layer. It integrates with
-LangChain (via callback handlers), LlamaIndex (via event callbacks), and any
+LangChain (via callback handlers), LlamaIndex (via node postprocessors), and any
 custom framework through the direct `trail.log()` and `@trail.track()` APIs.
 This ensures consistent governance even in heterogeneous multi-agent deployments.
 

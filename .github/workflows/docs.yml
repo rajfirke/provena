@@ -14,6 +14,7 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "scripts/gen_ref_pages.py"
+      - "src/provena/**"
 
 permissions:
   contents: write

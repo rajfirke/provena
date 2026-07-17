@@ -106,10 +106,12 @@ doc = Document(
 ```
 
 !!! tip "Provenance validation"
-    If your documents include `source` or `source_url` in their metadata,
-    Provena will mark those records as `VALID` provenance. Documents without
-    origin metadata will be marked `MISSING`, making gaps visible in your
-    audit trail.
+    The auto-extraction sets `source_url` and `author` but not `created_at`.
+    Since the default required fields are `source_url` and `created_at`,
+    records will be marked `INCOMPLETE` (missing `created_at`). To get
+    `VALID` status, either set `created_at` in your document metadata or
+    configure `required_fields=["source_url"]` on the trail. Documents
+    without any origin metadata will be marked `MISSING`.
 
 ## Full working example
 
@@ -174,11 +176,11 @@ Expected output:
 ```text
 Total records: 3
 Sources: {'retriever': 3}
-Provenance: {'VALID': 3}
+Provenance: {'INCOMPLETE': 3}
 Chain intact: 3 records verified
-  [VALID] langchain - a1b2c3d4e5f6
-  [VALID] langchain - b2c3d4e5f6a7
-  [VALID] langchain - c3d4e5f6a7b8
+  [INCOMPLETE] langchain - a1b2c3d4e5f6
+  [INCOMPLETE] langchain - b2c3d4e5f6a7
+  [INCOMPLETE] langchain - c3d4e5f6a7b8
 ```
 
 ## Using with other chain types
