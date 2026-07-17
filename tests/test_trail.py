@@ -332,6 +332,43 @@ class TestContextTrailAnnotate:
         assert ann_id >= 1
 
 
+class TestContextTrailGetAnnotations:
+    def test_empty_initially(self, memory_trail):
+        memory_trail.log("test", source="retriever")
+        assert memory_trail.get_annotations(1) == []
+
+    def test_returns_annotation_after_annotate(self, memory_trail):
+        memory_trail.log("test", source="retriever")
+        memory_trail.annotate(
+            record_id=1,
+            note="Reviewed and confirmed",
+            reviewer="jane.doe@company.com",
+        )
+        anns = memory_trail.get_annotations(1)
+        assert len(anns) == 1
+        assert anns[0]["note"] == "Reviewed and confirmed"
+        assert anns[0]["reviewer"] == "jane.doe@company.com"
+        assert anns[0]["timestamp"]
+
+    def test_multiple_annotations_in_order(self, memory_trail):
+        memory_trail.log("test", source="retriever")
+        memory_trail.annotate(record_id=1, note="first", reviewer="alice")
+        memory_trail.annotate(record_id=1, note="second", reviewer="bob")
+        anns = memory_trail.get_annotations(1)
+        assert [a["note"] for a in anns] == ["first", "second"]
+
+    def test_nonexistent_record_returns_empty(self, memory_trail):
+        assert memory_trail.get_annotations(999) == []
+
+    def test_does_not_break_hash_chain(self, memory_trail):
+        memory_trail.log("first", source="retriever")
+        memory_trail.annotate(record_id=1, note="review", reviewer="alice")
+        memory_trail.log("second", source="retriever")
+        verdict = memory_trail.verify_chain()
+        assert verdict.intact
+        assert verdict.total_records == 2
+
+
 class TestContextTrailSummary:
     def test_summary_empty(self, memory_trail):
         s = memory_trail.summary()
@@ -393,6 +430,37 @@ class TestContextTrailExport:
             "chain_hash",
         ]
         assert len(rows) == 3
+
+    def test_export_json_with_annotations(self, memory_trail):
+        memory_trail.log("test", source="retriever")
+        memory_trail.annotate(
+            record_id=1,
+            note="Reviewed and confirmed",
+            reviewer="alice",
+        )
+        exported = memory_trail.export(format="json_with_annotations")
+        data = json.loads(exported)
+        assert isinstance(data, dict)
+        assert len(data["records"]) == 1
+        assert data["annotations"]["1"]
+        assert len(data["annotations"]["1"]) == 1
+        assert data["annotations"]["1"][0]["note"] == "Reviewed and confirmed"
+
+    def test_export_json_with_annotations_omits_key_when_empty(self, memory_trail):
+        memory_trail.log("test", source="retriever")
+        exported = memory_trail.export(format="json_with_annotations")
+        data = json.loads(exported)
+        assert isinstance(data, dict)
+        assert len(data["records"]) == 1
+        assert "annotations" not in data
+
+    def test_export_json_unchanged_by_new_format(self, memory_trail):
+        memory_trail.log("test", source="retriever")
+        memory_trail.annotate(record_id=1, note="review", reviewer="alice")
+        exported = memory_trail.export(format="json")
+        data = json.loads(exported)
+        assert isinstance(data, list)
+        assert len(data) == 1
 
 
 class TestContextTrailSigning:

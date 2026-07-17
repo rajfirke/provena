@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 - `ContextTrail.query()` filters for exact provenance and freshness status values
+- **Annotation retrieval API**: `ContextTrail.get_annotations(record_id)` and
+  `StorageBackend.get_annotations(record_id)` (implemented in `SQLiteBackend`
+  and `InMemoryBackend`) — read annotations for a record in insertion order,
+  returning `[]` for non-existent or unannotated records (#27)
+- New `"json_with_annotations"` export format including annotations grouped by
+  `record_id` (backward compatible — existing `"json"` format unchanged) (#27)
 
 ## [0.5.0] - 2026-07-15
 

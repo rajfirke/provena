@@ -58,6 +58,7 @@ class StorageBackend(Protocol):
     def add_annotation(
         self, record_id: int, note: str, reviewer: str, timestamp: str
     ) -> int: ...
+    def get_annotations(self, record_id: int) -> list[dict[str, Any]]: ...
     def close(self) -> None: ...
 
 
@@ -194,6 +195,15 @@ class SQLiteBackend:
             self._conn.commit()
             return cursor.lastrowid  # type: ignore[return-value]
 
+    def get_annotations(self, record_id: int) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, record_id, note, reviewer, timestamp "
+                "FROM annotations WHERE record_id = ? ORDER BY id ASC",
+                (record_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
     def close(self) -> None:
         if self._conn is not None:
             self._conn.close()
@@ -279,6 +289,10 @@ class InMemoryBackend:
                 }
             )
             return ann_id
+
+    def get_annotations(self, record_id: int) -> list[dict[str, Any]]:
+        with self._lock:
+            return [{**a} for a in self._annotations if a["record_id"] == record_id]
 
     def close(self) -> None:
         pass

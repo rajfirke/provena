@@ -392,6 +392,14 @@ class ContextTrail:
         ts = datetime.now(timezone.utc).isoformat()
         return self._backend.add_annotation(record_id, note, reviewer, ts)
 
+    def get_annotations(self, record_id: int) -> list[dict[str, Any]]:
+        """Return all annotations for ``record_id`` in insertion order.
+
+        Returns an empty list if the record does not exist or has no
+        annotations (does not raise).
+        """
+        return self._backend.get_annotations(record_id)
+
     def summary(self) -> dict[str, Any]:
         records = self._backend.all_records()
         total = len(records)
@@ -419,6 +427,18 @@ class ContextTrail:
 
     def export(self, format: str = "json") -> str:
         records = self._backend.all_records()
+
+        if format == "json_with_annotations":
+            annotations: dict[str, list[dict[str, Any]]] = {}
+            for record in records:
+                record_id = record["id"]
+                anns = self._backend.get_annotations(record_id)
+                if anns:
+                    annotations[str(record_id)] = anns
+            payload: dict[str, Any] = {"records": records}
+            if annotations:
+                payload["annotations"] = annotations
+            return json.dumps(payload, indent=2, default=str)
 
         if format == "json":
             return json.dumps(records, indent=2, default=str)
