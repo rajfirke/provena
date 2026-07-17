@@ -368,6 +368,31 @@ class TestContextTrailGetAnnotations:
         assert verdict.intact
         assert verdict.total_records == 2
 
+    def test_get_annotations_persists_across_close_reopen_sqlite(self):
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        try:
+            trail = ContextTrail(storage_path=db_path)
+            trail.log("test", source="retriever")
+            trail.annotate(
+                record_id=1,
+                note="Reviewed and confirmed",
+                reviewer="jane.doe@company.com",
+            )
+            assert len(trail.get_annotations(1)) == 1
+            trail.close()
+
+            reopened = ContextTrail(storage_path=db_path)
+            anns = reopened.get_annotations(1)
+            assert len(anns) == 1
+            assert anns[0]["note"] == "Reviewed and confirmed"
+            assert anns[0]["reviewer"] == "jane.doe@company.com"
+            assert anns[0]["timestamp"]
+            reopened.close()
+        finally:
+            os.unlink(db_path)
+
 
 class TestContextTrailSummary:
     def test_summary_empty(self, memory_trail):
@@ -461,6 +486,42 @@ class TestContextTrailExport:
         data = json.loads(exported)
         assert isinstance(data, list)
         assert len(data) == 1
+
+    def test_export_json_with_annotations_on_empty_trail(self):
+        trail = ContextTrail(backend="memory")
+        try:
+            exported = trail.export(format="json_with_annotations")
+            data = json.loads(exported)
+            assert isinstance(data, dict)
+            assert data["records"] == []
+            assert "annotations" not in data
+        finally:
+            trail.close()
+
+    def test_export_json_with_annotations_sqlite_backend(self):
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        try:
+            trail = ContextTrail(storage_path=db_path)
+            trail.log("test", source="retriever")
+            trail.annotate(
+                record_id=1,
+                note="Reviewed and confirmed",
+                reviewer="alice",
+            )
+            exported = trail.export(format="json_with_annotations")
+            data = json.loads(exported)
+            assert isinstance(data, dict)
+            assert len(data["records"]) == 1
+            assert data["records"][0]["content_hash"]
+            assert "annotations" in data
+            assert len(data["annotations"]["1"]) == 1
+            assert data["annotations"]["1"][0]["note"] == "Reviewed and confirmed"
+            assert data["annotations"]["1"][0]["reviewer"] == "alice"
+            trail.close()
+        finally:
+            os.unlink(db_path)
 
 
 class TestContextTrailSigning:

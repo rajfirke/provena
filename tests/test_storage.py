@@ -315,3 +315,57 @@ class TestGetAnnotations:
             "reviewer",
             "timestamp",
         }
+
+    @pytest.mark.parametrize("backend_name", ["memory_backend", "sqlite_backend"])
+    def test_get_annotations_returns_defensive_copies(self, request, backend_name):
+        backend = request.getfixturevalue(backend_name)
+        backend.append(_make_record())
+        backend.add_annotation(
+            record_id=1,
+            note="original",
+            reviewer="alice",
+            timestamp="2026-07-13T00:00:00",
+        )
+
+        anns = backend.get_annotations(1)
+        assert anns[0]["note"] == "original"
+        anns[0]["note"] = "TAMPERED"
+        anns[0]["reviewer"] = "ATTACKER"
+        anns[0]["new_field"] = "injected"
+
+        anns_again = backend.get_annotations(1)
+        assert len(anns_again) == 1
+        assert anns_again[0]["note"] == "original"
+        assert anns_again[0]["reviewer"] == "alice"
+        assert "new_field" not in anns_again[0]
+
+    def test_get_annotations_persists_across_close_reopen(self):
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        try:
+            backend1 = SQLiteBackend(path=db_path)
+            backend1.append(_make_record())
+            backend1.add_annotation(
+                record_id=1,
+                note="first",
+                reviewer="alice",
+                timestamp="2026-07-13T00:00:00",
+            )
+            backend1.add_annotation(
+                record_id=1,
+                note="second",
+                reviewer="bob",
+                timestamp="2026-07-13T01:00:00",
+            )
+            assert len(backend1.get_annotations(1)) == 2
+            backend1.close()
+
+            backend2 = SQLiteBackend(path=db_path)
+            anns = backend2.get_annotations(1)
+            assert len(anns) == 2
+            assert [a["note"] for a in anns] == ["first", "second"]
+            assert [a["reviewer"] for a in anns] == ["alice", "bob"]
+            backend2.close()
+        finally:
+            os.unlink(db_path)
