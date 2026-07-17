@@ -40,6 +40,9 @@ htmlcov/
 *.db
 provena.db
 
+# MkDocs
+site/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,81 @@
+site_name: Provena
+site_url: https://rajfirke.github.io/provena
+site_description: Context governance for agentic AI systems
+repo_url: https://github.com/rajfirke/provena
+repo_name: rajfirke/provena
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.suggest
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - scripts/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - section-index
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: false
+            show_bases: false
+            members_order: source
+            docstring_style: google
+            merge_init_into_class: true
+            show_root_heading: true
+            show_root_full_path: false
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Guide:
+    - Tracking Context: guide/tracking.md
+    - Provenance Validation: guide/provenance.md
+    - Freshness Checking: guide/freshness.md
+    - Chain Verification: guide/verification.md
+    - Configuration: guide/configuration.md
+    - Testing: guide/testing.md
+  - Integrations:
+    - LangChain: integrations/langchain.md
+    - LlamaIndex: integrations/llamaindex.md
+    - OpenTelemetry: integrations/opentelemetry.md
+    - CLI Reference: integrations/cli.md
+  - Compliance:
+    - EU AI Act: compliance/eu-ai-act.md
+    - OWASP ASI06: compliance/owasp-asi06.md
+  - API Reference: api/
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - toc:
+      permalink: true
