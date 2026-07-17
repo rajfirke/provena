@@ -236,3 +236,136 @@ class TestSQLiteBackend:
             record_id=1, note="Checked", reviewer="bob", timestamp="2026-07-13"
         )
         assert ann_id >= 1
+
+
+class TestGetAnnotations:
+    @pytest.mark.parametrize("backend_name", ["memory_backend", "sqlite_backend"])
+    def test_empty_for_unannotated_record(self, request, backend_name):
+        backend = request.getfixturevalue(backend_name)
+        backend.append(_make_record())
+        assert backend.get_annotations(1) == []
+
+    @pytest.mark.parametrize("backend_name", ["memory_backend", "sqlite_backend"])
+    def test_returns_in_insertion_order(self, request, backend_name):
+        backend = request.getfixturevalue(backend_name)
+        backend.append(_make_record())
+        backend.add_annotation(
+            record_id=1,
+            note="first",
+            reviewer="alice",
+            timestamp="2026-07-13T00:00:00",
+        )
+        backend.add_annotation(
+            record_id=1,
+            note="second",
+            reviewer="bob",
+            timestamp="2026-07-13T01:00:00",
+        )
+        anns = backend.get_annotations(1)
+        assert [a["note"] for a in anns] == ["first", "second"]
+
+    @pytest.mark.parametrize("backend_name", ["memory_backend", "sqlite_backend"])
+    def test_filters_by_record_id(self, request, backend_name):
+        backend = request.getfixturevalue(backend_name)
+        backend.append(_make_record(content_hash="h1"))
+        backend.append(_make_record(content_hash="h2"))
+        backend.add_annotation(
+            record_id=1,
+            note="note-1",
+            reviewer="alice",
+            timestamp="2026-07-13T00:00:00",
+        )
+        backend.add_annotation(
+            record_id=2,
+            note="note-2",
+            reviewer="bob",
+            timestamp="2026-07-13T01:00:00",
+        )
+        backend.add_annotation(
+            record_id=1,
+            note="note-1b",
+            reviewer="carol",
+            timestamp="2026-07-13T02:00:00",
+        )
+        anns = backend.get_annotations(1)
+        assert [a["note"] for a in anns] == ["note-1", "note-1b"]
+        assert all(a["record_id"] == 1 for a in anns)
+
+    @pytest.mark.parametrize("backend_name", ["memory_backend", "sqlite_backend"])
+    def test_nonexistent_record_returns_empty(self, request, backend_name):
+        backend = request.getfixturevalue(backend_name)
+        assert backend.get_annotations(999) == []
+
+    @pytest.mark.parametrize("backend_name", ["memory_backend", "sqlite_backend"])
+    def test_returned_dicts_have_expected_keys(self, request, backend_name):
+        backend = request.getfixturevalue(backend_name)
+        backend.append(_make_record())
+        backend.add_annotation(
+            record_id=1,
+            note="reviewed",
+            reviewer="alice",
+            timestamp="2026-07-13T00:00:00",
+        )
+        anns = backend.get_annotations(1)
+        assert len(anns) == 1
+        assert set(anns[0].keys()) == {
+            "id",
+            "record_id",
+            "note",
+            "reviewer",
+            "timestamp",
+        }
+
+    @pytest.mark.parametrize("backend_name", ["memory_backend", "sqlite_backend"])
+    def test_get_annotations_returns_defensive_copies(self, request, backend_name):
+        backend = request.getfixturevalue(backend_name)
+        backend.append(_make_record())
+        backend.add_annotation(
+            record_id=1,
+            note="original",
+            reviewer="alice",
+            timestamp="2026-07-13T00:00:00",
+        )
+
+        anns = backend.get_annotations(1)
+        assert anns[0]["note"] == "original"
+        anns[0]["note"] = "TAMPERED"
+        anns[0]["reviewer"] = "ATTACKER"
+        anns[0]["new_field"] = "injected"
+
+        anns_again = backend.get_annotations(1)
+        assert len(anns_again) == 1
+        assert anns_again[0]["note"] == "original"
+        assert anns_again[0]["reviewer"] == "alice"
+        assert "new_field" not in anns_again[0]
+
+    def test_get_annotations_persists_across_close_reopen(self):
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        try:
+            backend1 = SQLiteBackend(path=db_path)
+            backend1.append(_make_record())
+            backend1.add_annotation(
+                record_id=1,
+                note="first",
+                reviewer="alice",
+                timestamp="2026-07-13T00:00:00",
+            )
+            backend1.add_annotation(
+                record_id=1,
+                note="second",
+                reviewer="bob",
+                timestamp="2026-07-13T01:00:00",
+            )
+            assert len(backend1.get_annotations(1)) == 2
+            backend1.close()
+
+            backend2 = SQLiteBackend(path=db_path)
+            anns = backend2.get_annotations(1)
+            assert len(anns) == 2
+            assert [a["note"] for a in anns] == ["first", "second"]
+            assert [a["reviewer"] for a in anns] == ["alice", "bob"]
+            backend2.close()
+        finally:
+            os.unlink(db_path)
