@@ -114,6 +114,27 @@ class TestContextTrailVerify:
         finally:
             os.unlink(db_path)
 
+    def test_verify_signed_chain_rejects_wrong_key(self):
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+
+        try:
+            trail_a = ContextTrail(storage_path=db_path, signing_key="key-a")
+            for i in range(5):
+                trail_a.log(f"entry_{i}", source="retriever")
+
+            assert trail_a.verify_chain().intact
+            trail_a.close()
+
+            trail_b = ContextTrail(storage_path=db_path, signing_key="key-b")
+            verdict = trail_b.verify_chain()
+            assert not verdict.intact
+            assert verdict.total_records == 5
+            assert verdict.broken_at == 1
+            trail_b.close()
+        finally:
+            os.unlink(db_path)
+
 
 class TestContextTrailTrack:
     def test_track_sync_function(self, memory_trail):
