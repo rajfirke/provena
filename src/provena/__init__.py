@@ -11,7 +11,7 @@ from provena.models import (
 )
 from provena.trail import ContextTrail
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "ChainVerdict",

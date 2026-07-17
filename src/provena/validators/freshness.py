@@ -1,3 +1,5 @@
+"""Freshness checker for detecting stale context inputs."""
+
 from __future__ import annotations
 
 import re
@@ -40,7 +42,14 @@ _QUARTER_START = {1: 1, 2: 4, 3: 7, 4: 10}
 class _TemporalPatterns:
     """Pre-compiled regex patterns for temporal detection in content."""
 
-    __slots__ = ("half_year", "iso_date", "month_year", "quarter", "year_context","update_marker",)
+    __slots__ = (
+        "half_year",
+        "iso_date",
+        "month_year",
+        "quarter",
+        "update_marker",
+        "year_context",
+    )
 
     def __init__(self) -> None:
         # 2023-06-15 or 2023/06/15
@@ -67,21 +76,36 @@ class _TemporalPatterns:
             re.IGNORECASE,
         )
 
+
 _PATTERNS = _TemporalPatterns()
 
 
 class FreshnessChecker:
+    """Checks whether context inputs are fresh or stale.
+
+    Uses provenance timestamps when available, falling back to regex-based
+    temporal marker detection in the content text.
+    """
+
     def __init__(
         self,
         max_age_days: int = 90,
         temporal_detection: bool = True,
     ) -> None:
+        """Initialize the freshness checker.
+
+        Args:
+            max_age_days: Content older than this threshold is marked STALE.
+            temporal_detection: If True, scan content text for date patterns
+                when no metadata timestamp is available.
+        """
         self._max_age_days = max_age_days
         self._temporal_detection = temporal_detection
         self._threshold = timedelta(days=max_age_days)
 
     @property
     def max_age_days(self) -> int:
+        """The staleness threshold in days."""
         return self._max_age_days
 
     def check(
@@ -90,6 +114,16 @@ class FreshnessChecker:
         content: str | None = None,
         now: datetime | None = None,
     ) -> FreshnessResult:
+        """Check the freshness of a context entry.
+
+        Args:
+            entry: The context entry to check.
+            content: Optional raw text for temporal marker detection.
+            now: Override the current time for testing.
+
+        Returns:
+            A FreshnessResult with status FRESH, STALE, or UNKNOWN.
+        """
         reference = now or datetime.now(timezone.utc)
 
         result = self._check_metadata(entry, reference)

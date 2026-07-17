@@ -1,3 +1,5 @@
+"""Core ContextTrail class for logging and auditing context inputs."""
+
 from __future__ import annotations
 
 import csv
@@ -33,6 +35,15 @@ _DISABLED = os.environ.get("PROVENA_DISABLED", "").lower() in ("1", "true", "yes
 
 
 class ContextTrail:
+    """Tamper-evident audit trail for AI agent context inputs.
+
+    Logs every context input with provenance validation, freshness checking,
+    and SHA-256 hash chaining. Supports both programmatic logging via ``log()``
+    and automatic tracking via the ``@trail.track()`` decorator.
+
+    Can be used as a context manager to ensure the storage backend is closed.
+    """
+
     def __init__(
         self,
         *,
@@ -49,6 +60,26 @@ class ContextTrail:
         on_error: Callable[[Exception], None] | None = None,
         config: dict[str, Any] | None = None,
     ) -> None:
+        """Initialize a ContextTrail.
+
+        Args:
+            storage_path: File path for the SQLite database.
+            backend: Storage backend type, ``"sqlite"`` or ``"memory"``.
+            required_fields: Provenance fields to require for VALID status.
+            max_age_days: Content older than this is marked STALE.
+            temporal_detection: Enable regex-based date detection in content text.
+            max_content_bytes: Truncate content beyond this size.
+            signing_key: HMAC key for signed hash chains. Also read from
+                ``PROVENA_SIGNING_KEY`` env var.
+            otel_enabled: Emit OpenTelemetry spans for each logged entry.
+            otel_service_name: Service name for OTel spans.
+            strict_mode: If True, governance errors propagate as exceptions.
+            on_error: Optional callback invoked on governance errors.
+            config: Dict-based configuration that overrides all other parameters.
+
+        Raises:
+            ValueError: If max_age_days or max_content_bytes is less than 1.
+        """
         if config:
             self._apply_config(config)
             return
@@ -124,10 +155,12 @@ class ContextTrail:
 
     @property
     def error_count(self) -> int:
+        """Number of governance errors encountered during this trail's lifetime."""
         return self._error_count
 
     @property
     def is_signed(self) -> bool:
+        """Whether this trail uses HMAC-signed hash chains."""
         return self._hasher.is_signed
 
     def log(
@@ -139,6 +172,21 @@ class ContextTrail:
         provenance: ProvenanceMetadata | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> TrailRecord | None:
+        """Log a context input to the audit trail.
+
+        Computes a content hash, validates provenance, checks freshness,
+        and appends a hash-chained record to storage.
+
+        Args:
+            content: The raw context content (string or bytes).
+            source: A ContextSource enum value or string like ``"tool:api"``.
+            source_name: Optional explicit source name.
+            provenance: Optional origin metadata for validation.
+            metadata: Arbitrary key-value pairs to attach to the record.
+
+        Returns:
+            The created TrailRecord, or None if a non-strict error occurred.
+        """
         try:
             return self._log_internal(
                 content,
@@ -229,6 +277,21 @@ class ContextTrail:
         *,
         content_extractor: Callable[..., str | bytes | list[Any]] | None = None,
     ) -> Callable[[F], F]:
+        """Decorator that automatically logs function return values to the trail.
+
+        Supports both sync and async functions. The decorated function's return
+        value is passed through unchanged.
+
+        Args:
+            source: A ContextSource enum value or string identifying the source.
+            source_name: Optional explicit source name.
+            content_extractor: Optional callable to extract loggable content
+                from the return value.
+
+        Returns:
+            A decorator that wraps the target function with trail logging.
+        """
+
         def decorator(func: F) -> F:
             if _DISABLED:
                 return func
@@ -336,6 +399,14 @@ class ContextTrail:
         return None
 
     def verify_chain(self) -> ChainVerdict:
+        """Verify the integrity of the entire hash chain.
+
+        Recomputes every chain hash from the genesis hash forward and checks
+        each against the stored value.
+
+        Returns:
+            A ChainVerdict indicating whether the chain is intact.
+        """
         records = self._backend.all_records()
         if not records:
             return ChainVerdict(intact=True, total_records=0, details="Empty trail")
@@ -373,6 +444,19 @@ class ContextTrail:
         freshness_status: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
+        """Query the audit trail with optional filters.
+
+        Args:
+            source: Filter by context source type.
+            start: Include only records at or after this timestamp.
+            end: Include only records at or before this timestamp.
+            provenance_status: Filter by provenance validation status.
+            freshness_status: Filter by freshness check status.
+            limit: Maximum number of records to return.
+
+        Returns:
+            A list of record dictionaries matching the filters.
+        """
         source_str = source.value if isinstance(source, ContextSource) else source
         return self._backend.query(
             source=source_str,
@@ -389,10 +473,26 @@ class ContextTrail:
         note: str,
         reviewer: str = "",
     ) -> int:
+        """Add a human oversight annotation to a trail record.
+
+        Args:
+            record_id: The ID of the record to annotate.
+            note: The annotation text.
+            reviewer: Optional name of the reviewer.
+
+        Returns:
+            The ID of the created annotation.
+        """
         ts = datetime.now(timezone.utc).isoformat()
         return self._backend.add_annotation(record_id, note, reviewer, ts)
 
     def summary(self) -> dict[str, Any]:
+        """Generate an aggregate summary of the audit trail.
+
+        Returns:
+            A dictionary with total count, provenance/freshness/source
+            breakdowns, and signing status.
+        """
         records = self._backend.all_records()
         total = len(records)
         if total == 0:
@@ -418,6 +518,14 @@ class ContextTrail:
         }
 
     def export(self, format: str = "json") -> str:
+        """Export all trail records in the specified format.
+
+        Args:
+            format: Output format, either ``"json"`` or ``"csv"``.
+
+        Returns:
+            The serialized trail data as a string.
+        """
         records = self._backend.all_records()
 
         if format == "json":
@@ -446,6 +554,12 @@ class ContextTrail:
         return json.dumps(records, default=str)
 
     def health(self) -> dict[str, Any]:
+        """Return a health-check dictionary for the trail.
+
+        Returns:
+            A dictionary with status, record count, backend type,
+            signing state, and error count.
+        """
         try:
             count = self._backend.count()
             return {
@@ -463,6 +577,7 @@ class ContextTrail:
             }
 
     def close(self) -> None:
+        """Close the storage backend and release resources."""
         self._backend.close()
 
     def _handle_error(self, exc: Exception) -> None:
@@ -478,9 +593,11 @@ class ContextTrail:
         return None
 
     def __enter__(self) -> ContextTrail:
+        """Enter the context manager, returning this trail."""
         return self
 
     def __exit__(self, *args: Any) -> None:
+        """Exit the context manager, closing the storage backend."""
         self.close()
 
 

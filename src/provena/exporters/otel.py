@@ -1,3 +1,5 @@
+"""OpenTelemetry span exporter for governance events."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -14,6 +16,12 @@ except ImportError:
 
 
 class OTelExporter:
+    """Emits OpenTelemetry spans for each context governance event.
+
+    Requires the ``opentelemetry-api`` package. When disabled or when OTel
+    is not installed, all methods are safe no-ops.
+    """
+
     def __init__(
         self,
         enabled: bool = True,
@@ -28,9 +36,11 @@ class OTelExporter:
 
     @property
     def enabled(self) -> bool:
+        """Whether OTel export is active."""
         return self._enabled
 
     def emit(self, record: TrailRecord) -> None:
+        """Emit a span for the given trail record."""
         if not self._enabled or self._tracer is None:
             return
 

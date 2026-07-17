@@ -1,6 +1,8 @@
 # Provena
 
 [![CI](https://github.com/rajfirke/provena/actions/workflows/ci.yml/badge.svg)](https://github.com/rajfirke/provena/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/provena)](https://pypi.org/project/provena/)
+[![Downloads](https://img.shields.io/pypi/dm/provena)](https://pypi.org/project/provena/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)

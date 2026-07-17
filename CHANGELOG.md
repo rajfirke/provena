@@ -6,7 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-17
+
 ### Added
+- Google-style docstrings on all public API classes and methods
+- PyPI trusted publishing via GitHub Actions with OIDC authentication
+- PyPI version and download badges in README
 - `ContextTrail.query()` filters for exact provenance and freshness status values
 
 ## [0.5.0] - 2026-07-15
