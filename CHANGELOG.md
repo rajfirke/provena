@@ -6,7 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-18
+
 ### Added
+- Documentation site at [rajfirke.github.io/provena](https://rajfirke.github.io/provena)
+- MkDocs Material theme with light/dark toggle, code copy, and search
+- Auto-generated API reference from docstrings via mkdocstrings
+- Guide pages: tracking, provenance, freshness, verification, configuration, testing
+- Integration docs: LangChain, LlamaIndex, OpenTelemetry, CLI reference
+- Compliance docs: EU AI Act article-by-article mapping, OWASP ASI06 coverage
+- GitHub Actions workflow for automatic docs deployment to GitHub Pages
+- Documentation URL added to PyPI project metadata
+
+## [0.6.0] - 2026-07-17
+
+### Added
+- Google-style docstrings on all public API classes and methods
+- PyPI trusted publishing via GitHub Actions with OIDC authentication
+- PyPI version and download badges in README
 - `ContextTrail.query()` filters for exact provenance and freshness status values
 - **Annotation retrieval API**: `ContextTrail.get_annotations(record_id)` and
   `StorageBackend.get_annotations(record_id)` (implemented in `SQLiteBackend`

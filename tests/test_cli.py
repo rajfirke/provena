@@ -342,12 +342,16 @@ class TestCLISummary:
 
 class TestCLIVersion:
     def test_version(self):
+        from provena import __version__
+
         runner = CliRunner()
         result = runner.invoke(cli, ["--version"])
         assert result.exit_code == 0
-        assert "0.5.0" in result.output
+        assert __version__ in result.output
 
     def test_python_module_version(self):
+        from provena import __version__
+
         result = subprocess.run(
             [sys.executable, "-m", "provena", "--version"],
             capture_output=True,
@@ -355,7 +359,7 @@ class TestCLIVersion:
             check=False,
         )
         assert result.returncode == 0
-        assert "0.5.0" in result.stdout
+        assert __version__ in result.stdout
 
 
 class TestCLIHelp:

@@ -1,3 +1,5 @@
+"""Validation components for provenance and freshness."""
+
 from provena.validators.freshness import FreshnessChecker
 from provena.validators.provenance import ProvenanceValidator
 
