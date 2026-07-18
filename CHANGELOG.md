@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+- **Policy engine**: `ContextTrail(policies=[...])` enforces governance rules at
+  three levels — `LOG`, `WARN`, `BLOCK` — on every logged entry (#26)
+- `PolicyViolation` exception raised on BLOCK (propagates even in non-strict mode)
+- Blocked records are still persisted to the audit trail (EU AI Act Art. 12 compliance)
+- Built-in policy checks: `freshness_check()`, `provenance_check()`,
+  `require_signing()`, `source_allowlist()`
+- `PolicyEngine.from_config()` for declarative policy configuration
+- Per-decorator policy override: `@trail.track(source="retriever", policies=[...])`
+- Forbid-overrides-permit: any BLOCK-level failure = DENY
+
 ## [0.7.0] - 2026-07-18
 
 ### Added

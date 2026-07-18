@@ -23,6 +23,12 @@ from provena.models import (
     ProvenanceMetadata,
     TrailRecord,
 )
+from provena.policy import (
+    EnforcementLevel,
+    Policy,
+    PolicyEngine,
+    PolicyViolation,
+)
 from provena.storage import InMemoryBackend, SQLiteBackend
 from provena.validators.freshness import FreshnessChecker
 from provena.validators.provenance import ProvenanceValidator
@@ -58,6 +64,7 @@ class ContextTrail:
         otel_service_name: str = "provena",
         strict_mode: bool = False,
         on_error: Callable[[Exception], None] | None = None,
+        policies: list[Policy] | None = None,
         config: dict[str, Any] | None = None,
     ) -> None:
         """Initialize a ContextTrail.
@@ -75,6 +82,7 @@ class ContextTrail:
             otel_service_name: Service name for OTel spans.
             strict_mode: If True, governance errors propagate as exceptions.
             on_error: Optional callback invoked on governance errors.
+            policies: List of Policy objects to enforce on every logged entry.
             config: Dict-based configuration that overrides all other parameters.
 
         Raises:
@@ -91,6 +99,7 @@ class ContextTrail:
         self._max_content_bytes = max_content_bytes
         self._error_count = 0
         self._lock = threading.Lock()
+        self._policy_engine = PolicyEngine(policies)
 
         key = _resolve_signing_key(signing_key)
         self._hasher = ChainHasher(signing_key=key)
@@ -119,6 +128,7 @@ class ContextTrail:
         freshness = config.get("freshness", {})
         chain = config.get("hash_chain", {})
         otel = config.get("otel", {})
+        policy_config = config.get("policies", [])
 
         max_age = freshness.get("max_age_days", 90)
         max_bytes = config.get("max_content_bytes", 65536)
@@ -129,6 +139,9 @@ class ContextTrail:
         self._max_content_bytes = max_bytes
         self._error_count = 0
         self._lock = threading.Lock()
+        self._policy_engine = (
+            PolicyEngine.from_config(policy_config) if policy_config else PolicyEngine()
+        )
 
         key = _resolve_signing_key(chain.get("signing_key"))
         self._hasher = ChainHasher(signing_key=key)
@@ -195,6 +208,8 @@ class ContextTrail:
                 provenance=provenance,
                 metadata=metadata,
             )
+        except PolicyViolation:
+            raise
         except Exception as exc:
             self._handle_error(exc)
             return None
@@ -207,6 +222,7 @@ class ContextTrail:
         *,
         provenance: ProvenanceMetadata | None = None,
         metadata: dict[str, Any] | None = None,
+        policy_engine: PolicyEngine | None = None,
     ) -> TrailRecord:
         entry = ContextEntry.create(
             content=content,
@@ -261,8 +277,36 @@ class ContextTrail:
         )
 
         self._emit_otel(trail_record)
+        self._enforce_policies(trail_record, engine=policy_engine)
 
         return trail_record
+
+    def _enforce_policies(
+        self, record: TrailRecord, *, engine: PolicyEngine | None = None
+    ) -> None:
+        evaluation = (engine or self._policy_engine).evaluate(record)
+
+        for result in evaluation.results:
+            if result.passed:
+                continue
+            if result.enforcement == EnforcementLevel.WARN:
+                _logger.warning(
+                    "Policy '%s' violation (WARN): %s",
+                    result.policy_name,
+                    result.details,
+                )
+
+        if evaluation.decision == "DENY":
+            blocking = next(
+                r
+                for r in evaluation.violations
+                if r.enforcement == EnforcementLevel.BLOCK
+            )
+            raise PolicyViolation(
+                policy_name=blocking.policy_name,
+                record=record,
+                details=blocking.details,
+            )
 
     def _emit_otel(self, record: TrailRecord) -> None:
         try:
@@ -276,6 +320,7 @@ class ContextTrail:
         source_name: str = "",
         *,
         content_extractor: Callable[..., str | bytes | list[Any]] | None = None,
+        policies: list[Policy] | None = None,
     ) -> Callable[[F], F]:
         """Decorator that automatically logs function return values to the trail.
 
@@ -287,10 +332,14 @@ class ContextTrail:
             source_name: Optional explicit source name.
             content_extractor: Optional callable to extract loggable content
                 from the return value.
+            policies: Optional per-decorator policy override. When provided,
+                these policies are used instead of the trail-level policies
+                for calls through this decorator.
 
         Returns:
             A decorator that wraps the target function with trail logging.
         """
+        override_engine = PolicyEngine(policies) if policies is not None else None
 
         def decorator(func: F) -> F:
             if _DISABLED:
@@ -306,6 +355,7 @@ class ContextTrail:
                         source,
                         source_name,
                         content_extractor=content_extractor,
+                        policy_engine=override_engine,
                     )
                     return result
 
@@ -319,6 +369,7 @@ class ContextTrail:
                     source,
                     source_name,
                     content_extractor=content_extractor,
+                    policy_engine=override_engine,
                 )
                 return result
 
@@ -333,6 +384,7 @@ class ContextTrail:
         source_name: str,
         *,
         content_extractor: Callable[..., Any] | None = None,
+        policy_engine: PolicyEngine | None = None,
     ) -> None:
         try:
             items = self._extract_content(result, content_extractor)
@@ -343,7 +395,10 @@ class ContextTrail:
                     source=source,
                     source_name=source_name,
                     provenance=provenance,
+                    policy_engine=policy_engine,
                 )
+        except PolicyViolation:
+            raise
         except Exception as exc:
             self._handle_error(exc)
 
