@@ -19,6 +19,14 @@ from provena.trail import ContextTrail
     type=click.Path(),
 )
 @click.option(
+    "--config",
+    "config_path",
+    default=None,
+    envvar="PROVENA_CONFIG",
+    help="Path to provena.toml or provena.yaml config file.",
+    type=click.Path(),
+)
+@click.option(
     "--signing-key",
     default=None,
     envvar="PROVENA_SIGNING_KEY",
@@ -26,10 +34,16 @@ from provena.trail import ContextTrail
 )
 @click.version_option(package_name="provena")
 @click.pass_context
-def cli(ctx: click.Context, db: str, signing_key: str | None) -> None:
+def cli(
+    ctx: click.Context,
+    db: str,
+    config_path: str | None,
+    signing_key: str | None,
+) -> None:
     """Provena — Context governance for agentic AI systems."""
     ctx.ensure_object(dict)
     ctx.obj["db"] = db
+    ctx.obj["config_path"] = config_path
     ctx.obj["signing_key"] = signing_key
 
 
@@ -212,6 +226,93 @@ def summary(ctx: click.Context) -> None:
                 click.echo(f"  {src:12s} {count}")
     finally:
         trail.close()
+
+
+@cli.command()
+@click.option(
+    "--from",
+    "from_path",
+    required=True,
+    help="Source: SQLite file path or PostgreSQL connection URL.",
+)
+@click.option(
+    "--to",
+    "to_path",
+    required=True,
+    help="Destination: SQLite file path or PostgreSQL connection URL.",
+)
+@click.option(
+    "--batch-size",
+    default=500,
+    type=int,
+    help="Number of records per batch.",
+)
+@click.pass_context
+def migrate(
+    ctx: click.Context,
+    from_path: str,
+    to_path: str,
+    batch_size: int,
+) -> None:
+    """Migrate trail data between storage backends."""
+    src = _open_backend(from_path)
+    dst = _open_backend(to_path)
+    try:
+        records = src.all_records()
+        total = len(records)
+        if total == 0:
+            click.echo("Source is empty — nothing to migrate.")
+            return
+
+        record_ids = [r["id"] for r in records]
+        for i in range(0, total, batch_size):
+            batch = records[i : i + batch_size]
+            for record in batch:
+                record.pop("id", None)
+                dst.append(record)
+            click.echo(f"  Migrated {min(i + batch_size, total)}/{total} records")
+
+        for record_id in record_ids:
+            annotations = src.get_annotations(record_id)
+            for ann in annotations:
+                dst.add_annotation(
+                    record_id=ann["record_id"],
+                    note=ann["note"],
+                    reviewer=ann.get("reviewer", ""),
+                    timestamp=ann["timestamp"],
+                )
+
+        dst_trail = ContextTrail(
+            storage_path=to_path,
+            signing_key=ctx.obj.get("signing_key"),
+        )
+        verdict = dst_trail.verify_chain()
+        dst_trail.close()
+
+        if verdict.intact:
+            click.echo(
+                click.style("PASS", fg="green", bold=True)
+                + f" — Migrated {total} records, chain intact"
+            )
+        else:
+            click.echo(
+                click.style("FAIL", fg="red", bold=True)
+                + f" — Chain broken at record {verdict.broken_at}"
+            )
+            ctx.exit(1)
+    finally:
+        src.close()
+        dst.close()
+
+
+def _open_backend(path: str) -> Any:
+    if path.startswith("postgresql://") or path.startswith("postgres://"):
+        from provena.storage_pg import PostgreSQLBackend
+
+        return PostgreSQLBackend(conninfo=path)
+    from provena.storage import SQLiteBackend
+
+    return SQLiteBackend(path=path)
 
 
 def _print_table(records: list[dict[str, Any]]) -> None:

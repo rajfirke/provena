@@ -12,6 +12,7 @@ import os
 import threading
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, TypeVar
 
 from provena.exporters.otel import OTelExporter
@@ -65,13 +66,14 @@ class ContextTrail:
         strict_mode: bool = False,
         on_error: Callable[[Exception], None] | None = None,
         policies: list[Policy] | None = None,
-        config: dict[str, Any] | None = None,
+        config: dict[str, Any] | str | Path | None = None,
     ) -> None:
         """Initialize a ContextTrail.
 
         Args:
             storage_path: File path for the SQLite database.
-            backend: Storage backend type, ``"sqlite"`` or ``"memory"``.
+            backend: Storage backend type, ``"sqlite"``, ``"memory"``, or
+                ``"postgresql"``.
             required_fields: Provenance fields to require for VALID status.
             max_age_days: Content older than this is marked STALE.
             temporal_detection: Enable regex-based date detection in content text.
@@ -83,12 +85,14 @@ class ContextTrail:
             strict_mode: If True, governance errors propagate as exceptions.
             on_error: Optional callback invoked on governance errors.
             policies: List of Policy objects to enforce on every logged entry.
-            config: Dict-based configuration that overrides all other parameters.
+            config: Configuration dict, or path to a ``.toml``/``.yaml`` file.
 
         Raises:
             ValueError: If max_age_days or max_content_bytes is less than 1.
         """
-        if config:
+        if config is not None:
+            if isinstance(config, (str, Path)):
+                config = _load_config_file(config)
             self._apply_config(config)
             return
 
@@ -116,6 +120,10 @@ class ContextTrail:
         self._backend: InMemoryBackend | SQLiteBackend
         if _DISABLED or backend == "memory":
             self._backend = InMemoryBackend()
+        elif backend == "postgresql" or _is_pg_url(storage_path):
+            from provena.storage_pg import PostgreSQLBackend
+
+            self._backend = PostgreSQLBackend(conninfo=storage_path)  # type: ignore[assignment]
         else:
             self._backend = SQLiteBackend(path=storage_path)
 
@@ -143,7 +151,11 @@ class ContextTrail:
             PolicyEngine.from_config(policy_config) if policy_config else PolicyEngine()
         )
 
-        key = _resolve_signing_key(chain.get("signing_key"))
+        key_value = chain.get("signing_key")
+        key_env = chain.get("signing_key_env")
+        if key_env and key_value is None:
+            key_value = os.environ.get(key_env)
+        key = _resolve_signing_key(key_value)
         self._hasher = ChainHasher(signing_key=key)
         self._validator = ProvenanceValidator(
             required_fields=provenance.get("required_fields")
@@ -158,10 +170,21 @@ class ContextTrail:
         )
 
         backend_type = storage.get("backend", "sqlite")
+        storage_path = storage.get("path", "provena.db")
+        if backend_type == "sqlite" and _is_pg_url(storage_path):
+            backend_type = "postgresql"
+
         if _DISABLED or backend_type == "memory":
             self._backend = InMemoryBackend()
+        elif backend_type == "postgresql":
+            from provena.storage_pg import PostgreSQLBackend
+
+            self._backend = PostgreSQLBackend(  # type: ignore[assignment]
+                conninfo=storage_path,
+                pool_size=storage.get("pool_size", 5),
+            )
         else:
-            self._backend = SQLiteBackend(path=storage.get("path", "provena.db"))
+            self._backend = SQLiteBackend(path=storage_path)
 
         last = self._backend.get_last()
         self._previous_hash = str(last["chain_hash"]) if last else GENESIS_HASH
@@ -692,3 +715,47 @@ def _resolve_signing_key(key: str | bytes | None) -> bytes | None:
     if isinstance(key, str):
         return key.encode("utf-8")
     return key
+
+
+def _is_pg_url(path: str) -> bool:
+    return isinstance(path, str) and (
+        path.startswith("postgresql://") or path.startswith("postgres://")
+    )
+
+
+def _load_config_file(path: str | Path) -> dict[str, Any]:
+    """Load configuration from a TOML or YAML file."""
+    filepath = Path(path)
+    if not filepath.exists():
+        raise FileNotFoundError(f"Config file not found: {filepath}")
+
+    suffix = filepath.suffix.lower()
+
+    if suffix == ".toml":
+        try:
+            import tomllib
+        except ModuleNotFoundError:
+            import tomli as tomllib
+        with open(filepath, "rb") as f:
+            return dict(tomllib.load(f))
+
+    if suffix in (".yaml", ".yml"):
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError:
+            raise ImportError(
+                "PyYAML is required for YAML config files. "
+                "Install with: pip install provena[yaml]"
+            ) from None
+        with open(filepath) as f:
+            data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"YAML config must be a mapping, got {type(data).__name__}"
+            )
+        return data
+
+    raise ValueError(
+        f"Unsupported config file format: '{suffix}'. "
+        "Use .toml, .yaml, or .yml"
+    )

@@ -1,0 +1,38 @@
+# Provena configuration file
+# Copy to provena.yaml and customize for your project.
+# Usage: ContextTrail(config="provena.yaml")
+
+storage:
+  backend: sqlite         # sqlite, memory, or postgresql
+  path: provena.db        # File path (SQLite) or connection URL (PostgreSQL)
+  # pool_size: 5          # Connection pool size (PostgreSQL only)
+
+provenance:
+  required_fields:
+    - source_url
+    - created_at
+
+freshness:
+  max_age_days: 90
+  temporal_detection: true
+
+hash_chain:
+  # Never store signing keys in config files.
+  # Reference an environment variable instead:
+  # signing_key_env: PROVENA_SIGNING_KEY
+
+otel:
+  enabled: false
+  service_name: provena
+
+# strict_mode: false
+# max_content_bytes: 65536
+
+# Uncomment to enable policies:
+# policies:
+#   - check: freshness
+#     status: STALE
+#     enforcement: warn
+#   - check: provenance
+#     status: MISSING
+#     enforcement: log

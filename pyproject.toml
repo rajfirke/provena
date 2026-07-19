@@ -4,11 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "provena"
-version = "0.8.0"
+version = "0.9.0"
 description = "Context governance for agentic AI — tamper-evident audit trails for LLM context inputs"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
+dependencies = ["tomli>=2.0; python_version < '3.11'"]
 authors = [
     { name = "Raj Firke" },
 ]
@@ -35,6 +36,7 @@ cli = ["click>=8.0", "rich>=13.0"]
 otel = ["opentelemetry-api>=1.20"]
 langchain = ["langchain-core>=0.2"]
 llamaindex = ["llama-index-core>=0.10"]
+postgres = ["psycopg[pool]>=3.1"]
 all = ["provena[yaml,cli,otel]"]
 docs = [
     "mkdocs-material>=9.5",
@@ -101,6 +103,10 @@ module = [
     "langchain_core.*",
     "llama_index.*",
     "pydantic.*",
+    "psycopg.*",
+    "psycopg_pool.*",
+    "tomli.*",
+    "tomllib.*",
 ]
 ignore_missing_imports = true
 

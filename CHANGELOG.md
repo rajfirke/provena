@@ -4,6 +4,25 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-07-19
+
+### Added
+- **TOML config files**: `ContextTrail(config="provena.toml")` with zero new deps
+  on Python 3.11+ (stdlib `tomllib`); `tomli` backport for 3.10
+- **YAML config files**: `ContextTrail(config="trail.yaml")` via `provena[yaml]`
+- **`signing_key_env`**: Config files reference env vars instead of storing keys
+  directly (`hash_chain.signing_key_env = "PROVENA_SIGNING_KEY"`)
+- **PostgreSQL backend**: `provena[postgres]` with `psycopg` v3, connection
+  pooling, `pg_advisory_xact_lock` for chain ordering, JSONB + TIMESTAMPTZ
+  schema, and 5 indexes for query performance
+- **URL auto-detection**: `storage_path="postgresql://..."` automatically selects
+  the PostgreSQL backend
+- **Migration CLI**: `provena migrate --from audit.db --to postgresql://...`
+  with batch streaming, annotation copying, and chain integrity verification
+- **`--config` CLI option**: All CLI commands support `--config provena.toml`
+  (envvar `PROVENA_CONFIG`)
+- Example config files: `provena.example.toml` and `provena.example.yaml`
+
 ## [0.8.0] - 2026-07-18
 
 ### Added
