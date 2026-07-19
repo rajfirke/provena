@@ -228,6 +228,49 @@ def summary(ctx: click.Context) -> None:
         trail.close()
 
 
+@cli.group()
+def mcp() -> None:
+    """MCP server commands."""
+
+
+@mcp.command()
+@click.option(
+    "--db",
+    default=None,
+    envvar="PROVENA_DB",
+    help="Path to Provena database file.",
+    type=click.Path(),
+)
+@click.option(
+    "--transport",
+    default="stdio",
+    type=click.Choice(["stdio"]),
+    help="MCP transport type.",
+)
+@click.pass_context
+def serve(ctx: click.Context, db: str | None, transport: str) -> None:
+    """Start the Provena MCP governance server."""
+    try:
+        from provena.mcp_server import configure, create_server
+    except ImportError:
+        click.echo(
+            "fastmcp is required for the MCP server. "
+            "Install with: pip install provena[mcp]",
+            err=True,
+        )
+        ctx.exit(1)
+        return
+
+    db_path = db or ctx.parent.parent.obj.get("db", "provena.db")  # type: ignore[union-attr]
+    signing_key = ctx.parent.parent.obj.get("signing_key")  # type: ignore[union-attr]
+
+    trail = ContextTrail(storage_path=db_path, signing_key=signing_key)
+    configure(trail)
+
+    server = create_server()
+    server.run(transport=transport)
+
+
 @cli.command()
 @click.option(
     "--from",

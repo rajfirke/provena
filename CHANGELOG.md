@@ -4,6 +4,19 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] - 2026-07-19
+
+### Added
+- **MCP server**: Governance-aware agents via `provena mcp serve` (`provena[mcp]`)
+- 5 MCP tools: `check_freshness`, `verify_chain`, `list_violations`,
+  `get_summary`, `check_provenance` — all return structured JSON with
+  `recommendation` field
+- 3 MCP resources: `provena://health`, `provena://summary`,
+  `provena://chain/status`
+- 1 MCP prompt: `governance_check` — standard agent self-audit prompt
+- `configure(trail)` API for binding a ContextTrail to the MCP server
+- CLI: `provena mcp serve --db audit.db` starts the MCP server
+
 ## [0.10.0] - 2026-07-19
 
 ### Added
