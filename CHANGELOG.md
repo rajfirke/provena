@@ -4,6 +4,20 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - 2026-07-19
+
+### Added
+- **CrewAI adapter**: `ProvenaCrewListener` event listener for tool and agent
+  outputs (`provena[crewai]`)
+- **AutoGen adapter**: `ProvenaAutoGenHook` for message interception via
+  `register_hook("process_message_before_send", ...)` (`provena[autogen]`)
+- **OpenAI Agents SDK adapter**: `ProvenaRunHooks` with async `on_tool_end`
+  and `on_handoff` hooks (`provena[openai-agents]`)
+- **Google ADK adapter**: `ProvenaADKCallback` with `after_tool_call`
+  callback (`provena[google-adk]`)
+- 6 total framework adapters (LangChain, LlamaIndex, CrewAI, AutoGen,
+  OpenAI Agents SDK, Google ADK)
+
 ## [0.9.0] - 2026-07-19
 
 ### Added
