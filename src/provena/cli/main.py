@@ -7,7 +7,7 @@ from typing import Any
 
 import click
 
-from provena.trail import ContextTrail
+from provena.trail import ContextTrail, _is_pg_url
 
 
 @click.group()
@@ -82,7 +82,7 @@ def audit(
 ) -> None:
     """Query the context governance audit log."""
     db_path = ctx.obj["db"]
-    if not os.path.exists(db_path):
+    if not _is_pg_url(db_path) and not os.path.exists(db_path):
         click.echo(f"Database not found: {db_path}", err=True)
         ctx.exit(1)
         return
@@ -108,7 +108,7 @@ def audit(
 def verify(ctx: click.Context) -> None:
     """Verify the integrity of the hash-chained audit trail."""
     db_path = ctx.obj["db"]
-    if not os.path.exists(db_path):
+    if not _is_pg_url(db_path) and not os.path.exists(db_path):
         click.echo(f"Database not found: {db_path}", err=True)
         ctx.exit(1)
         return
@@ -148,7 +148,7 @@ def verify(ctx: click.Context) -> None:
 def report(ctx: click.Context, fmt: str, output: str | None) -> None:
     """Generate a context governance compliance report."""
     db_path = ctx.obj["db"]
-    if not os.path.exists(db_path):
+    if not _is_pg_url(db_path) and not os.path.exists(db_path):
         click.echo(f"Database not found: {db_path}", err=True)
         ctx.exit(1)
         return
@@ -195,7 +195,7 @@ def report(ctx: click.Context, fmt: str, output: str | None) -> None:
 def summary(ctx: click.Context) -> None:
     """Show a quick summary of the audit trail."""
     db_path = ctx.obj["db"]
-    if not os.path.exists(db_path):
+    if not _is_pg_url(db_path) and not os.path.exists(db_path):
         click.echo(f"Database not found: {db_path}", err=True)
         ctx.exit(1)
         return
@@ -307,19 +307,20 @@ def migrate(
             click.echo("Source is empty — nothing to migrate.")
             return
 
-        record_ids = [r["id"] for r in records]
+        id_map: dict[int, int] = {}
         for i in range(0, total, batch_size):
             batch = records[i : i + batch_size]
             for record in batch:
-                record.pop("id", None)
-                dst.append(record)
+                src_id = record.pop("id")
+                dst_id = dst.append(record)
+                id_map[src_id] = dst_id
             click.echo(f"  Migrated {min(i + batch_size, total)}/{total} records")
 
-        for record_id in record_ids:
-            annotations = src.get_annotations(record_id)
+        for src_id, dst_id in id_map.items():
+            annotations = src.get_annotations(src_id)
             for ann in annotations:
                 dst.add_annotation(
-                    record_id=ann["record_id"],
+                    record_id=dst_id,
                     note=ann["note"],
                     reviewer=ann.get("reviewer", ""),
                     timestamp=ann["timestamp"],

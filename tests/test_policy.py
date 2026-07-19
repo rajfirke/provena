@@ -283,10 +283,20 @@ class TestBuiltInPolicies:
         )
         assert policy.check(record)
 
-    def test_require_signing_passes_with_chain_hash(self, memory_trail):
+    def test_require_signing_fails_without_signing_key(self, memory_trail):
         record = memory_trail.log("data", source="retriever")
         policy = require_signing(enforcement=EnforcementLevel.BLOCK)
-        assert policy.check(record)
+        assert not policy.check(record)
+
+    def test_require_signing_passes_with_signed_trail(self):
+        trail = ContextTrail(
+            backend="memory",
+            signing_key="secret",
+            policies=[require_signing(enforcement=EnforcementLevel.BLOCK)],
+        )
+        record = trail.log("data", source="retriever")
+        assert record is not None
+        trail.close()
 
 
 class TestContextTrailWithPolicies:

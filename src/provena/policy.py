@@ -220,17 +220,17 @@ def provenance_check(
 def require_signing(
     *,
     enforcement: EnforcementLevel = EnforcementLevel.BLOCK,
+    _signed_ref: list[bool] | None = None,
 ) -> Policy:
     """Policy that fails when the trail is not HMAC-signed.
 
-    Note: this check uses the record's chain_hash length as a proxy
-    (HMAC-SHA256 produces 64-char hex just like SHA-256, so this checks
-    that a chain_hash exists). For a true signing check, the trail
-    must be constructed with a signing_key.
+    Accepts an optional mutable reference ``_signed_ref`` (a single-element
+    list) that can be updated after construction by the trail.
     """
+    ref = _signed_ref if _signed_ref is not None else [False]
 
     def _check(record: TrailRecord) -> bool:
-        return bool(record.chain_hash)
+        return ref[0]
 
     return Policy(
         name="require_signing",

@@ -103,10 +103,10 @@ class ContextTrail:
         self._max_content_bytes = max_content_bytes
         self._error_count = 0
         self._lock = threading.Lock()
-        self._policy_engine = PolicyEngine(policies)
-
         key = _resolve_signing_key(signing_key)
         self._hasher = ChainHasher(signing_key=key)
+        self._policy_engine = PolicyEngine(policies)
+        self._update_signing_policies()
         self._validator = ProvenanceValidator(required_fields=required_fields)
         self._freshness = FreshnessChecker(
             max_age_days=max_age_days,
@@ -147,16 +147,16 @@ class ContextTrail:
         self._max_content_bytes = max_bytes
         self._error_count = 0
         self._lock = threading.Lock()
-        self._policy_engine = (
-            PolicyEngine.from_config(policy_config) if policy_config else PolicyEngine()
-        )
-
         key_value = chain.get("signing_key")
         key_env = chain.get("signing_key_env")
         if key_env and key_value is None:
             key_value = os.environ.get(key_env)
         key = _resolve_signing_key(key_value)
         self._hasher = ChainHasher(signing_key=key)
+        self._policy_engine = (
+            PolicyEngine.from_config(policy_config) if policy_config else PolicyEngine()
+        )
+        self._update_signing_policies()
         self._validator = ProvenanceValidator(
             required_fields=provenance.get("required_fields")
         )
@@ -188,6 +188,22 @@ class ContextTrail:
 
         last = self._backend.get_last()
         self._previous_hash = str(last["chain_hash"]) if last else GENESIS_HASH
+
+    def _update_signing_policies(self) -> None:
+        from provena.policy import require_signing
+
+        updated = []
+        for policy in self._policy_engine.policies:
+            if policy.name == "require_signing":
+                updated.append(
+                    require_signing(
+                        enforcement=policy.enforcement,
+                        _signed_ref=[self._hasher.is_signed],
+                    )
+                )
+            else:
+                updated.append(policy)
+        self._policy_engine = PolicyEngine(list(updated))
 
     @property
     def error_count(self) -> int:

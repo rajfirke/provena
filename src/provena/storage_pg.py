@@ -238,6 +238,9 @@ def _row_to_dict(cursor: Any, row: tuple[Any, ...]) -> dict[str, Any]:
     d = dict(zip(cols, row, strict=True))
     if "truncated" in d:
         d["truncated"] = 1 if d["truncated"] else 0
+    ts = d.get("timestamp")
+    if ts is not None and not isinstance(ts, str):
+        d["timestamp"] = ts.isoformat()
     for json_field in ("provenance_json", "metadata_json"):
         val = d.get(json_field)
         if val is not None and not isinstance(val, str):
