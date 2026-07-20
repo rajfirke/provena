@@ -4,6 +4,22 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.13.0] - 2026-07-20
+
+### Added
+- **Multi-trail aggregation**: `TrailAggregator` for governing multi-agent
+  systems — unified summary, query, and chain verification across agents (#28)
+- **Handoff tracking**: `record_handoff()` links records across trails when
+  context flows agent-to-agent, with `run_id` grouping for workflow audit
+- **Cross-agent timeline**: `timeline()` provides merged chronological view
+  with interleaved handoff edges
+- **Evidence gap detection**: `detect_gaps()` surfaces broken chains, stale
+  context, missing provenance, and unlinked handoffs across the full pipeline
+- **Query by run**: `query(run_id="...")` filters records involved in a
+  specific workflow execution across all agents
+- New exports: `TrailAggregator`, `HandoffEdge`, `AggregateVerdict`,
+  `TrailVerdict`, `EvidenceGap`
+
 ## [0.12.0] - 2026-07-20
 
 ### Added

@@ -1,5 +1,12 @@
 """Provena — Context governance for agentic AI systems."""
 
+from provena.aggregator import (
+    AggregateVerdict,
+    EvidenceGap,
+    HandoffEdge,
+    TrailAggregator,
+    TrailVerdict,
+)
 from provena.models import (
     ChainVerdict,
     ContextEntry,
@@ -23,22 +30,27 @@ from provena.policy import (
 )
 from provena.trail import ContextTrail
 
-__version__ = "0.12.0"
+__version__ = "0.13.0"
 
 __all__ = [
+    "AggregateVerdict",
     "ChainVerdict",
     "ContextEntry",
     "ContextSource",
     "ContextTrail",
     "EnforcementLevel",
+    "EvidenceGap",
     "FreshnessResult",
+    "HandoffEdge",
     "Policy",
     "PolicyCheckResult",
     "PolicyEngine",
     "PolicyEvaluation",
     "PolicyViolation",
     "ProvenanceMetadata",
+    "TrailAggregator",
     "TrailRecord",
+    "TrailVerdict",
     "ValidationResult",
     "__version__",
     "freshness_check",
