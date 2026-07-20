@@ -66,6 +66,7 @@ class PostgreSQLBackend:
         conninfo: str,
         pool_size: int = 5,
         min_pool_size: int = 1,
+        hasher: Any = None,
     ) -> None:
         try:
             from psycopg_pool import ConnectionPool
@@ -81,6 +82,7 @@ class PostgreSQLBackend:
             max_size=pool_size,
             open=True,
         )
+        self._hasher = hasher
         self._init_schema()
 
     def _init_schema(self) -> None:
@@ -100,10 +102,34 @@ class PostgreSQLBackend:
                 )
             conn.commit()
 
+    def _check_open(self) -> None:
+        if self._pool is None:
+            raise RuntimeError("PostgreSQLBackend is closed")
+
     def append(self, record: dict[str, Any]) -> int:
+        self._check_open()
         with self._pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT pg_advisory_xact_lock(1)")
+
+                chain_hash = record["chain_hash"]
+                previous_hash = record["previous_hash"]
+
+                if self._hasher is not None:
+                    cur.execute("SELECT chain_hash FROM trail ORDER BY id DESC LIMIT 1")
+                    last = cur.fetchone()
+                    from provena.hasher import GENESIS_HASH
+
+                    actual_prev = last[0] if last else GENESIS_HASH
+                    if actual_prev != previous_hash:
+                        chain_hash = self._hasher.compute_chain_hash(
+                            previous_hash=actual_prev,
+                            content_hash=record["content_hash"],
+                            source=record["source"],
+                            timestamp=record["timestamp"],
+                        )
+                        previous_hash = actual_prev
+
                 cur.execute(
                     "INSERT INTO trail "
                     "(content_hash, source, source_name, timestamp, "
@@ -122,8 +148,8 @@ class PostgreSQLBackend:
                         record.get("provenance_status", "MISSING"),
                         record.get("missing_fields", ""),
                         record.get("freshness_status", "UNKNOWN"),
-                        record["chain_hash"],
-                        record["previous_hash"],
+                        chain_hash,
+                        previous_hash,
                         record.get("config_hash", ""),
                         record.get("metadata_json", "{}"),
                         record.get("content_type", "str"),
@@ -137,6 +163,7 @@ class PostgreSQLBackend:
         return record_id
 
     def get(self, record_id: int) -> dict[str, Any] | None:
+        self._check_open()
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT * FROM trail WHERE id = %s", (record_id,))
             row = cur.fetchone()
@@ -145,6 +172,7 @@ class PostgreSQLBackend:
             return _row_to_dict(cur, row)
 
     def get_last(self) -> dict[str, Any] | None:
+        self._check_open()
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT * FROM trail ORDER BY id DESC LIMIT 1")
             row = cur.fetchone()
@@ -153,6 +181,7 @@ class PostgreSQLBackend:
             return _row_to_dict(cur, row)
 
     def count(self) -> int:
+        self._check_open()
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM trail")
             row = cur.fetchone()
@@ -160,6 +189,7 @@ class PostgreSQLBackend:
             return int(row[0])
 
     def all_records(self) -> list[dict[str, Any]]:
+        self._check_open()
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT * FROM trail ORDER BY id ASC")
             return [_row_to_dict(cur, r) for r in cur.fetchall()]
@@ -174,6 +204,7 @@ class PostgreSQLBackend:
         freshness_status: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
+        self._check_open()
         clauses: list[str] = []
         params: list[Any] = []
 
@@ -204,6 +235,7 @@ class PostgreSQLBackend:
     def add_annotation(
         self, record_id: int, note: str, reviewer: str, timestamp: str
     ) -> int:
+        self._check_open()
         with self._pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -218,6 +250,7 @@ class PostgreSQLBackend:
         return ann_id
 
     def get_annotations(self, record_id: int) -> list[dict[str, Any]]:
+        self._check_open()
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.execute(
                 "SELECT id, record_id, note, reviewer, timestamp "

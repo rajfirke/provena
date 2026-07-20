@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from typing import Any
 
 try:
@@ -14,6 +15,7 @@ except ImportError:
 from provena.trail import ContextTrail
 
 _trail: ContextTrail | None = None
+_trail_lock = threading.Lock()
 
 _MCP_IMPORT_ERROR = (
     "fastmcp is required for the MCP server. Install with: pip install provena[mcp]"
@@ -23,18 +25,22 @@ _MCP_IMPORT_ERROR = (
 def configure(trail: ContextTrail) -> None:
     """Bind a ContextTrail instance for the MCP server to use."""
     global _trail
-    _trail = trail
+    with _trail_lock:
+        _trail = trail
 
 
 def get_trail() -> ContextTrail:
     """Return the configured trail, creating a default one if needed."""
     global _trail
-    if _trail is None:
-        _trail = ContextTrail(
-            storage_path=os.environ.get("PROVENA_DB", "provena.db"),
-            signing_key=os.environ.get("PROVENA_SIGNING_KEY"),
-        )
-    return _trail
+    if _trail is not None:
+        return _trail
+    with _trail_lock:
+        if _trail is None:
+            _trail = ContextTrail(
+                storage_path=os.environ.get("PROVENA_DB", "provena.db"),
+                signing_key=os.environ.get("PROVENA_SIGNING_KEY"),
+            )
+        return _trail
 
 
 def create_server(name: str = "provena-governance") -> Any:

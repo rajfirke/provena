@@ -97,6 +97,20 @@ class ContextTrail:
             ValueError: If max_age_days or max_content_bytes is less than 1.
         """
         if config is not None:
+            overridden = []
+            if on_error is not None:
+                overridden.append("on_error")
+            if policies is not None:
+                overridden.append("policies")
+            if signing_key is not None:
+                overridden.append("signing_key")
+            if strict_mode:
+                overridden.append("strict_mode")
+            if overridden:
+                _logger.warning(
+                    "config= overrides all other parameters; these will be ignored: %s",
+                    ", ".join(overridden),
+                )
             if isinstance(config, (str, Path)):
                 config = _load_config_file(config)
             self._apply_config(config)
@@ -129,7 +143,9 @@ class ContextTrail:
         elif backend == "postgresql" or _is_pg_url(storage_path):
             from provena.storage_pg import PostgreSQLBackend
 
-            self._backend = PostgreSQLBackend(conninfo=storage_path)  # type: ignore[assignment]
+            self._backend = PostgreSQLBackend(
+                conninfo=storage_path, hasher=self._hasher
+            )  # type: ignore[assignment]
         else:
             self._backend = SQLiteBackend(path=storage_path)
 
@@ -198,6 +214,7 @@ class ContextTrail:
             self._backend = PostgreSQLBackend(  # type: ignore[assignment]
                 conninfo=storage_path,
                 pool_size=storage.get("pool_size", 5),
+                hasher=self._hasher,
             )
         else:
             self._backend = SQLiteBackend(path=storage_path)
@@ -515,10 +532,20 @@ class ContextTrail:
     def _extract_provenance(self, result: Any) -> ProvenanceMetadata | None:
         if hasattr(result, "metadata") and isinstance(result.metadata, dict):
             meta = result.metadata
+            created_at = (
+                meta.get("created_at") or meta.get("date") or meta.get("last_modified")
+            )
+            if isinstance(created_at, str):
+                try:
+                    created_at = datetime.fromisoformat(created_at)
+                except ValueError:
+                    created_at = None
+            elif not isinstance(created_at, datetime):
+                created_at = None
             return ProvenanceMetadata(
                 source_url=meta.get("source") or meta.get("source_url"),
                 author=meta.get("author"),
-                created_at=None,
+                created_at=created_at,
                 version=meta.get("version"),
             )
         return None
@@ -742,7 +769,8 @@ class ContextTrail:
         self._backend.close()
 
     def _handle_error(self, exc: Exception) -> None:
-        self._error_count += 1
+        with self._lock:
+            self._error_count += 1
         _logger.warning("Provena governance error: %s", exc)
         if self._on_error is not None:
             import contextlib

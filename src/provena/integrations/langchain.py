@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -84,7 +85,24 @@ def _extract_langchain_provenance(doc: Any) -> ProvenanceMetadata | None:
     meta = getattr(doc, "metadata", None)
     if not isinstance(meta, dict):
         return None
+    created_at = _parse_datetime(
+        meta.get("created_at") or meta.get("date") or meta.get("last_modified")
+    )
     return ProvenanceMetadata(
         source_url=meta.get("source") or meta.get("source_url"),
         author=meta.get("author"),
+        created_at=created_at,
     )
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
