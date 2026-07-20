@@ -72,12 +72,12 @@ class TestRetentionExecution:
         assert "5 records would be deleted" in result.details
         assert trail_with_old_records.summary()["total"] == 8
 
-    def test_delete_expired(self, trail_with_old_records):
+    def test_tombstone_expired(self, trail_with_old_records):
         engine = RetentionEngine(trail_with_old_records, retention_days=180)
         result = engine.execute()
         assert result.deleted == 5
         remaining = trail_with_old_records.summary()["total"]
-        assert remaining == 4
+        assert remaining == 9  # 8 original + 1 retention log (tombstoned, not deleted)
 
     def test_archive_before_delete(self, trail_with_old_records, tmp_path):
         archive = str(tmp_path / "archive.json")

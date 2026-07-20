@@ -32,7 +32,7 @@ from provena.report import generate_pdf_report, generate_report
 from provena.retention import RetentionEngine, RetentionResult
 from provena.trail import ContextTrail
 
-__version__ = "0.14.0"
+__version__ = "0.15.0"
 
 __all__ = [
     "AggregateVerdict",

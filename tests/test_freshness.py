@@ -254,14 +254,14 @@ class TestFreshnessCheckerTemporal:
         result = checker.check(entry, content=content, now=now)
         assert result.status == "UNKNOWN"
 
-    def test_multiple_dates_uses_oldest(self):
+    def test_multiple_dates_uses_newest(self):
         now = datetime(2026, 7, 13, tzinfo=timezone.utc)
         checker = FreshnessChecker(max_age_days=90)
         content = "Updated 2026-06-01 based on original data from 2023-01-15."
         entry = _entry(content=content)
         result = checker.check(entry, content=content, now=now)
-        assert result.status == "STALE"
-        assert result.detected_date.year == 2023
+        assert result.status == "FRESH"
+        assert result.detected_date.year == 2026
 
     def test_bytes_content_skips_temporal(self):
         checker = FreshnessChecker(max_age_days=90)

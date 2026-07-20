@@ -4,6 +4,19 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.15.0] - 2026-07-20
+
+### Fixed
+- **Retention preserves chain integrity** — uses tombstones instead of record
+  deletion, keeping verify_chain() intact per EU AI Act Art. 12 (#40)
+- **Buffer flush no longer loses records** — peek-before-pop pattern prevents
+  data loss when backend.append() fails (#41)
+- **FreshnessChecker uses most recent date** — max(dates) instead of min(dates)
+  prevents false STALE on content with historical references (#49)
+- **Compliance report score aligned with Art. 10** — provenance check now
+  requires 100% valid, matching the article-level assessment (#52)
+- Retention engine now supports PostgreSQL backend via _pool connection (#44)
+
 ## [0.14.0] - 2026-07-20
 
 ### Added
