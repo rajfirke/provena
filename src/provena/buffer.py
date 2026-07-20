@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import atexit
 import contextlib
+import logging
 import signal
 import threading
 import weakref
 from collections import deque
 from typing import Any, Protocol
+
+_logger = logging.getLogger("provena.buffer")
 
 
 class _Appendable(Protocol):
@@ -84,8 +87,17 @@ class WriteBuffer:
         """Flush while holding self._lock. Returns count flushed."""
         count = 0
         while self._buffer:
-            record = self._buffer.popleft()
-            self._backend.append(record)
+            record = self._buffer[0]
+            try:
+                self._backend.append(record)
+            except Exception:
+                _logger.warning(
+                    "Failed to flush record (keeping in buffer, %d remaining)",
+                    len(self._buffer),
+                    exc_info=True,
+                )
+                break
+            self._buffer.popleft()
             count += 1
         return count
 
