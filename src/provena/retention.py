@@ -73,7 +73,8 @@ class RetentionEngine:
         """
         reference = now or datetime.now(timezone.utc)
         cutoff = reference - timedelta(days=self._retention_days)
-        return self._trail.query(end=cutoff, limit=10000)
+        result: list[dict[str, Any]] = self._trail.query(end=cutoff, limit=10000)
+        return result
 
     def preview(self, now: datetime | None = None) -> dict[str, Any]:
         """Preview what a retention run would do without making changes.

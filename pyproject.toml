@@ -118,6 +118,7 @@ module = [
     "google.*",
     "autogen.*",
     "fastmcp.*",
+    "fpdf.*",
 ]
 ignore_missing_imports = true
 
