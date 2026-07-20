@@ -90,7 +90,7 @@ def _collect_report_data(trail: Any, *, title: str = "") -> dict[str, Any]:
             "tamper-evident logging compromised (Art. 12)"
         )
 
-    if total > 0 and valid_count / total >= 0.8:
+    if total > 0 and valid_count == total:
         checks_passed += 1
     elif total > 0:
         pct = round(valid_count / total * 100)
