@@ -133,7 +133,9 @@ class TestPostgreSQLBackendQuery:
 class TestPostgreSQLBackendAnnotations:
     def test_add_and_get_annotations(self, pg_backend):
         pg_backend.append(_make_record())
-        ann_id = pg_backend.add_annotation(1, "reviewed", "admin", "2026-07-18T12:00:00Z")
+        ann_id = pg_backend.add_annotation(
+            1, "reviewed", "admin", "2026-07-18T12:00:00Z"
+        )
         assert ann_id == 1
         anns = pg_backend.get_annotations(1)
         assert len(anns) == 1

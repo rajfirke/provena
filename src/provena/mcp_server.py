@@ -16,8 +16,7 @@ from provena.trail import ContextTrail
 _trail: ContextTrail | None = None
 
 _MCP_IMPORT_ERROR = (
-    "fastmcp is required for the MCP server. "
-    "Install with: pip install provena[mcp]"
+    "fastmcp is required for the MCP server. Install with: pip install provena[mcp]"
 )
 
 
@@ -59,12 +58,14 @@ def create_server(name: str = "provena-governance") -> Any:
     def chain_status() -> str:
         """Hash chain integrity status."""
         v = get_trail().verify_chain()
-        return json.dumps({
-            "intact": v.intact,
-            "total_records": v.total_records,
-            "broken_at": v.broken_at,
-            "details": v.details,
-        })
+        return json.dumps(
+            {
+                "intact": v.intact,
+                "total_records": v.total_records,
+                "broken_at": v.broken_at,
+                "details": v.details,
+            }
+        )
 
     @mcp.tool()
     def check_freshness(source: str | None = None, limit: int = 10) -> str:
@@ -100,17 +101,19 @@ def create_server(name: str = "provena-governance") -> Any:
     def verify_chain() -> str:
         """Verify the integrity of the hash-chained audit trail."""
         v = get_trail().verify_chain()
-        return json.dumps({
-            "status": "PASS" if v.intact else "FAIL",
-            "total_records": v.total_records,
-            "broken_at": v.broken_at,
-            "details": v.details,
-            "recommendation": (
-                "Chain intact — all records verified."
-                if v.intact
-                else f"Chain broken at record {v.broken_at} — investigate tampering."
-            ),
-        })
+        return json.dumps(
+            {
+                "status": "PASS" if v.intact else "FAIL",
+                "total_records": v.total_records,
+                "broken_at": v.broken_at,
+                "details": v.details,
+                "recommendation": (
+                    "Chain intact — all records verified."
+                    if v.intact
+                    else f"Chain broken at record {v.broken_at} — investigate tampering."
+                ),
+            }
+        )
 
     @mcp.tool()
     def list_violations(
@@ -131,23 +134,27 @@ def create_server(name: str = "provena-governance") -> Any:
             rid = r["id"]
             if rid not in seen_ids:
                 seen_ids.add(rid)
-                violations.append({
-                    "id": rid,
-                    "source": r["source"],
-                    "source_name": r["source_name"],
-                    "provenance_status": r.get("provenance_status", "?"),
-                    "freshness_status": r.get("freshness_status", "?"),
-                })
+                violations.append(
+                    {
+                        "id": rid,
+                        "source": r["source"],
+                        "source_name": r["source_name"],
+                        "provenance_status": r.get("provenance_status", "?"),
+                        "freshness_status": r.get("freshness_status", "?"),
+                    }
+                )
 
-        return json.dumps({
-            "total_violations": len(violations),
-            "violations": violations[:limit],
-            "recommendation": (
-                "No governance violations found."
-                if not violations
-                else f"{len(violations)} violations — review and remediate."
-            ),
-        })
+        return json.dumps(
+            {
+                "total_violations": len(violations),
+                "violations": violations[:limit],
+                "recommendation": (
+                    "No governance violations found."
+                    if not violations
+                    else f"{len(violations)} violations — review and remediate."
+                ),
+            }
+        )
 
     @mcp.tool()
     def get_summary() -> str:
@@ -156,22 +163,20 @@ def create_server(name: str = "provena-governance") -> Any:
         total = s["total"]
         prov = s.get("provenance", {})
         fresh = s.get("freshness", {})
-        valid_pct = (
-            round(prov.get("VALID", 0) / total * 100) if total > 0 else 0
+        valid_pct = round(prov.get("VALID", 0) / total * 100) if total > 0 else 0
+        fresh_pct = round(fresh.get("FRESH", 0) / total * 100) if total > 0 else 0
+        return json.dumps(
+            {
+                **s,
+                "provenance_valid_pct": valid_pct,
+                "freshness_fresh_pct": fresh_pct,
+                "recommendation": (
+                    f"{valid_pct}% provenance valid, {fresh_pct}% fresh."
+                    if total > 0
+                    else "No records in the audit trail."
+                ),
+            }
         )
-        fresh_pct = (
-            round(fresh.get("FRESH", 0) / total * 100) if total > 0 else 0
-        )
-        return json.dumps({
-            **s,
-            "provenance_valid_pct": valid_pct,
-            "freshness_fresh_pct": fresh_pct,
-            "recommendation": (
-                f"{valid_pct}% provenance valid, {fresh_pct}% fresh."
-                if total > 0
-                else "No records in the audit trail."
-            ),
-        })
 
     @mcp.tool()
     def check_provenance(source: str | None = None, limit: int = 10) -> str:
@@ -180,20 +185,20 @@ def create_server(name: str = "provena-governance") -> Any:
         records = trail.query(source=source, limit=limit)
         valid = [r for r in records if r.get("provenance_status") == "VALID"]
         missing = [r for r in records if r.get("provenance_status") == "MISSING"]
-        incomplete = [
-            r for r in records if r.get("provenance_status") == "INCOMPLETE"
-        ]
-        return json.dumps({
-            "total_checked": len(records),
-            "valid": len(valid),
-            "missing": len(missing),
-            "incomplete": len(incomplete),
-            "recommendation": (
-                "All entries have valid provenance."
-                if not missing and not incomplete
-                else f"{len(missing)} missing, {len(incomplete)} incomplete — attach provenance metadata."
-            ),
-        })
+        incomplete = [r for r in records if r.get("provenance_status") == "INCOMPLETE"]
+        return json.dumps(
+            {
+                "total_checked": len(records),
+                "valid": len(valid),
+                "missing": len(missing),
+                "incomplete": len(incomplete),
+                "recommendation": (
+                    "All entries have valid provenance."
+                    if not missing and not incomplete
+                    else f"{len(missing)} missing, {len(incomplete)} incomplete — attach provenance metadata."
+                ),
+            }
+        )
 
     @mcp.prompt()
     def governance_check() -> str:

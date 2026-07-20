@@ -11,8 +11,7 @@ class TestTOMLConfig:
     def test_load_toml_config(self, tmp_path):
         config_file = tmp_path / "provena.toml"
         config_file.write_text(
-            '[storage]\nbackend = "memory"\n\n'
-            "[freshness]\nmax_age_days = 30\n"
+            '[storage]\nbackend = "memory"\n\n[freshness]\nmax_age_days = 30\n'
         )
         trail = ContextTrail(config=str(config_file))
         trail.log("test", source="retriever")
@@ -130,8 +129,7 @@ class TestAutoDetectPostgres:
     def test_pg_url_auto_detection_in_config(self, tmp_path):
         config_file = tmp_path / "provena.toml"
         config_file.write_text(
-            "[storage]\n"
-            'path = "postgresql://localhost:5432/provena_test"\n'
+            '[storage]\npath = "postgresql://localhost:5432/provena_test"\n'
         )
         with pytest.raises(ImportError, match="psycopg"):
             ContextTrail(config=str(config_file))
@@ -146,4 +144,6 @@ class TestAutoDetectPostgres:
 
     def test_explicit_postgresql_backend(self):
         with pytest.raises(ImportError, match="psycopg"):
-            ContextTrail(backend="postgresql", storage_path="postgresql://localhost/test")
+            ContextTrail(
+                backend="postgresql", storage_path="postgresql://localhost/test"
+            )

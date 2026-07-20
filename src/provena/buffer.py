@@ -42,7 +42,9 @@ class WriteBuffer:
         self._thread.start()
 
         atexit.register(self._atexit_flush)
-        self._finalizer = weakref.finalize(self, _weak_flush, self._buffer, self._lock, self._backend)
+        self._finalizer = weakref.finalize(
+            self, _weak_flush, self._buffer, self._lock, self._backend
+        )
 
         with contextlib.suppress(OSError, ValueError):
             signal.signal(signal.SIGTERM, self._sigterm_handler)

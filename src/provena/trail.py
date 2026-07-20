@@ -819,6 +819,5 @@ def _load_config_file(path: str | Path) -> dict[str, Any]:
         return data
 
     raise ValueError(
-        f"Unsupported config file format: '{suffix}'. "
-        "Use .toml, .yaml, or .yml"
+        f"Unsupported config file format: '{suffix}'. Use .toml, .yaml, or .yml"
     )
