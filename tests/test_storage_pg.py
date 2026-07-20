@@ -38,10 +38,11 @@ def pg_backend():
         conn.execute("TRUNCATE trail, annotations RESTART IDENTITY CASCADE")
         conn.commit()
     yield backend
-    with backend._pool.connection() as conn:
-        conn.execute("TRUNCATE trail, annotations RESTART IDENTITY CASCADE")
-        conn.commit()
-    backend.close()
+    if backend._pool is not None:
+        with backend._pool.connection() as conn:
+            conn.execute("TRUNCATE trail, annotations RESTART IDENTITY CASCADE")
+            conn.commit()
+        backend.close()
 
 
 def _make_record(**overrides):

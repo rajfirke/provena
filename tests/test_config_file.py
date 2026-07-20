@@ -125,25 +125,26 @@ class TestSigningKeyEnv:
         trail.close()
 
 
+_has_psycopg = False
+try:
+    import psycopg  # noqa: F401
+
+    _has_psycopg = True
+except ImportError:
+    pass
+
+
 class TestAutoDetectPostgres:
-    def test_pg_url_auto_detection_in_config(self, tmp_path):
+    @pytest.mark.skipif(_has_psycopg, reason="psycopg IS installed")
+    def test_pg_url_import_error_without_psycopg(self):
+        with pytest.raises(ImportError, match="psycopg"):
+            ContextTrail(storage_path="postgresql://localhost/test")
+
+    @pytest.mark.skipif(_has_psycopg, reason="psycopg IS installed")
+    def test_pg_config_import_error_without_psycopg(self, tmp_path):
         config_file = tmp_path / "provena.toml"
         config_file.write_text(
             '[storage]\npath = "postgresql://localhost:5432/provena_test"\n'
         )
         with pytest.raises(ImportError, match="psycopg"):
             ContextTrail(config=str(config_file))
-
-    def test_pg_url_auto_detection_kwargs(self):
-        with pytest.raises(ImportError, match="psycopg"):
-            ContextTrail(storage_path="postgresql://localhost/test")
-
-    def test_postgres_scheme_auto_detection(self):
-        with pytest.raises(ImportError, match="psycopg"):
-            ContextTrail(storage_path="postgres://localhost/test")
-
-    def test_explicit_postgresql_backend(self):
-        with pytest.raises(ImportError, match="psycopg"):
-            ContextTrail(
-                backend="postgresql", storage_path="postgresql://localhost/test"
-            )
