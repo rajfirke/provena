@@ -172,22 +172,22 @@ class FreshnessChecker:
         if not dates:
             return None
 
-        oldest = min(dates)
-        if oldest.tzinfo is None:
-            oldest = oldest.replace(tzinfo=timezone.utc)
+        newest = max(dates)
+        if newest.tzinfo is None:
+            newest = newest.replace(tzinfo=timezone.utc)
 
-        age = now - oldest
+        age = now - newest
         if age <= self._threshold:
             return FreshnessResult(
                 status="FRESH",
-                details=f"Temporal marker detected: {oldest.date().isoformat()} ({age.days} days old)",
-                detected_date=oldest,
+                details=f"Temporal marker detected: {newest.date().isoformat()} ({age.days} days old)",
+                detected_date=newest,
             )
 
         return FreshnessResult(
             status="STALE",
-            details=f"Temporal marker detected: {oldest.date().isoformat()} ({age.days} days old, threshold: {self._max_age_days} days)",
-            detected_date=oldest,
+            details=f"Temporal marker detected: {newest.date().isoformat()} ({age.days} days old, threshold: {self._max_age_days} days)",
+            detected_date=newest,
         )
 
     def _extract_dates(self, content: str) -> list[datetime]:
