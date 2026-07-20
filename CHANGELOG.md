@@ -4,6 +4,20 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.14.0] - 2026-07-20
+
+### Added
+- **Retention policy engine**: `RetentionEngine` with configurable retention
+  period, EU AI Act 180-day minimum enforcement, export-before-delete archival,
+  dry-run preview, and retention actions logged to the audit trail (#29)
+- **Compliance report generator**: `generate_report()` and `generate_pdf_report()`
+  with EU AI Act article-by-article compliance scoring (Art. 10/12/13/14),
+  issue detection, and chain integrity assessment
+- **PDF reports**: `provena report --format pdf` via `provena[pdf]` (fpdf2)
+- **CLI retain command**: `provena retain --max-age 365 --archive backup.json`
+  with `--dry-run` preview mode
+- New exports: `RetentionEngine`, `RetentionResult`
+
 ## [0.13.0] - 2026-07-20
 
 ### Added

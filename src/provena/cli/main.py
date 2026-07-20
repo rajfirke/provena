@@ -140,7 +140,7 @@ def verify(ctx: click.Context) -> None:
     "--format",
     "fmt",
     default="json",
-    type=click.Choice(["json", "text", "csv"]),
+    type=click.Choice(["json", "text", "csv", "pdf"]),
     help="Output format.",
 )
 @click.option("--output", "-o", default=None, type=click.Path(), help="Write to file.")
@@ -173,19 +173,89 @@ def report(ctx: click.Context, fmt: str, output: str | None) -> None:
             "signed": summary.get("signed", False),
         }
 
-        if fmt == "json":
+        if fmt == "pdf":
+            from provena.report import generate_pdf_report
+
+            pdf_path = output or "provena-report.pdf"
+            generate_pdf_report(trail, pdf_path)
+            click.echo(f"PDF report written to {pdf_path}")
+        elif fmt == "json":
             content = json.dumps(report_data, indent=2)
+            if output:
+                with open(output, "w") as f:
+                    f.write(content)
+                click.echo(f"Report written to {output}")
+            else:
+                click.echo(content)
         elif fmt == "csv":
             content = trail.export(format="csv")
+            if output:
+                with open(output, "w") as f:
+                    f.write(content)
+                click.echo(f"Report written to {output}")
+            else:
+                click.echo(content)
         else:
             content = _format_text_report(report_data)
+            if output:
+                with open(output, "w") as f:
+                    f.write(content)
+                click.echo(f"Report written to {output}")
+            else:
+                click.echo(content)
+    finally:
+        trail.close()
 
-        if output:
-            with open(output, "w") as f:
-                f.write(content)
-            click.echo(f"Report written to {output}")
+
+@cli.command()
+@click.option(
+    "--max-age", default=365, type=int, help="Delete records older than this many days."
+)
+@click.option(
+    "--archive",
+    default=None,
+    type=click.Path(),
+    help="Export deleted records to this file before deletion.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview what would be deleted without making changes.",
+)
+@click.pass_context
+def retain(
+    ctx: click.Context, max_age: int, archive: str | None, dry_run: bool
+) -> None:
+    """Apply retention policy — delete old records with optional archive."""
+    db_path = ctx.obj["db"]
+    if not _is_pg_url(db_path) and not os.path.exists(db_path):
+        click.echo(f"Database not found: {db_path}", err=True)
+        ctx.exit(1)
+        return
+
+    trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
+    try:
+        from provena.retention import RetentionEngine
+
+        engine = RetentionEngine(trail, retention_days=max_age)
+        result = engine.execute(archive_path=archive, dry_run=dry_run)
+
+        if dry_run:
+            click.echo(result.details)
+        elif result.deleted == 0:
+            click.echo("No records exceed the retention period.")
         else:
-            click.echo(content)
+            if result.archive_path:
+                click.echo(
+                    f"Archived {result.archived} records to {result.archive_path}"
+                )
+            click.echo(
+                click.style("DONE", fg="green", bold=True)
+                + f" — Deleted {result.deleted} records older than {max_age} days"
+            )
+    except ValueError as e:
+        click.echo(str(e), err=True)
+        ctx.exit(1)
     finally:
         trail.close()
 
