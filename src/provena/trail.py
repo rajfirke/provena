@@ -66,6 +66,9 @@ class ContextTrail:
         strict_mode: bool = False,
         on_error: Callable[[Exception], None] | None = None,
         policies: list[Policy] | None = None,
+        buffered: bool = False,
+        buffer_size: int = 500,
+        flush_interval: float = 1.0,
         config: dict[str, Any] | str | Path | None = None,
     ) -> None:
         """Initialize a ContextTrail.
@@ -85,6 +88,9 @@ class ContextTrail:
             strict_mode: If True, governance errors propagate as exceptions.
             on_error: Optional callback invoked on governance errors.
             policies: List of Policy objects to enforce on every logged entry.
+            buffered: If True, batch writes via a background thread.
+            buffer_size: Flush when buffer reaches this many records.
+            flush_interval: Seconds between periodic flushes.
             config: Configuration dict, or path to a ``.toml``/``.yaml`` file.
 
         Raises:
@@ -126,6 +132,16 @@ class ContextTrail:
             self._backend = PostgreSQLBackend(conninfo=storage_path)  # type: ignore[assignment]
         else:
             self._backend = SQLiteBackend(path=storage_path)
+
+        self._buffer = None
+        if buffered and not _DISABLED:
+            from provena.buffer import WriteBuffer
+
+            self._buffer = WriteBuffer(
+                backend=self._backend,
+                buffer_size=buffer_size,
+                flush_interval=flush_interval,
+            )
 
         last = self._backend.get_last()
         self._previous_hash: str = last["chain_hash"] if last else GENESIS_HASH
@@ -185,6 +201,17 @@ class ContextTrail:
             )
         else:
             self._backend = SQLiteBackend(path=storage_path)
+
+        self._buffer = None
+        buf_config = storage.get("buffered", False)
+        if buf_config and not _DISABLED:
+            from provena.buffer import WriteBuffer
+
+            self._buffer = WriteBuffer(
+                backend=self._backend,
+                buffer_size=storage.get("buffer_size", 500),
+                flush_interval=storage.get("flush_interval", 1.0),
+            )
 
         last = self._backend.get_last()
         self._previous_hash = str(last["chain_hash"]) if last else GENESIS_HASH
@@ -303,7 +330,11 @@ class ContextTrail:
                 "truncated": entry.truncated,
             }
 
-            record_id = self._backend.append(record_data)
+            if self._buffer is not None:
+                self._buffer.append(record_data)
+                record_id = -1
+            else:
+                record_id = self._backend.append(record_data)
             self._previous_hash = chain_hash
 
         trail_record = TrailRecord(
@@ -676,13 +707,17 @@ class ContextTrail:
         """
         try:
             count = self._backend.count()
-            return {
+            result: dict[str, Any] = {
                 "status": "healthy",
                 "record_count": count,
                 "backend": type(self._backend).__name__,
                 "signed": self._hasher.is_signed,
+                "buffered": self._buffer is not None,
                 "errors": self._error_count,
             }
+            if self._buffer is not None:
+                result["buffer_pending"] = self._buffer.pending
+            return result
         except Exception as exc:
             return {
                 "status": "unhealthy",
@@ -690,8 +725,20 @@ class ContextTrail:
                 "errors": self._error_count,
             }
 
+    def flush(self) -> int:
+        """Flush buffered records to the storage backend.
+
+        Returns:
+            Number of records flushed, or 0 if buffering is not enabled.
+        """
+        if self._buffer is not None:
+            return self._buffer.flush()
+        return 0
+
     def close(self) -> None:
         """Close the storage backend and release resources."""
+        if self._buffer is not None:
+            self._buffer.close()
         self._backend.close()
 
     def _handle_error(self, exc: Exception) -> None:

@@ -4,6 +4,18 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] - 2026-07-20
+
+### Added
+- **Async batch write buffer**: `ContextTrail(buffered=True)` moves storage
+  writes to a background thread for 10K+ entries/sec throughput
+- `trail.flush()` for explicit buffer drain
+- 5-layer flush safety: explicit, context manager, atexit, SIGTERM, weakref
+- `health()` now reports `buffered` and `buffer_pending` fields
+- Config file support: `storage.buffered`, `storage.buffer_size`,
+  `storage.flush_interval`
+- CI benchmark tests: 10K entries < 10s, verify 10K chain < 5s
+
 ## [0.11.0] - 2026-07-19
 
 ### Added
