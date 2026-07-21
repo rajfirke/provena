@@ -237,6 +237,30 @@ class TestSQLiteBackend:
         )
         assert ann_id >= 1
 
+    @pytest.mark.parametrize(
+        "operation",
+        [
+            lambda backend: backend.append(_make_record()),
+            lambda backend: backend.get(1),
+            lambda backend: backend.get_last(),
+            lambda backend: backend.count(),
+            lambda backend: backend.all_records(),
+            lambda backend: backend.query(),
+            lambda backend: backend.add_annotation(
+                record_id=1,
+                note="Checked",
+                reviewer="bob",
+                timestamp="2026-07-13",
+            ),
+            lambda backend: backend.get_annotations(1),
+        ],
+    )
+    def test_closed_backend_rejects_operations(self, sqlite_backend, operation):
+        sqlite_backend.close()
+
+        with pytest.raises(RuntimeError, match="SQLiteBackend is closed"):
+            operation(sqlite_backend)
+
 
 class TestGetAnnotations:
     @pytest.mark.parametrize("backend_name", ["memory_backend", "sqlite_backend"])
