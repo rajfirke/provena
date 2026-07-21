@@ -789,6 +789,15 @@ class ContextTrail:
         """Exit the context manager, closing the storage backend."""
         self.close()
 
+    def __repr__(self) -> str:
+        return (
+            f"ContextTrail("
+            f"backend={type(self._backend).__name__}, "
+            f"records={self._backend.count()}, "
+            f"signed={self._hasher.is_signed}"
+            f")"
+        )
+
 
 def _validate_config(max_age_days: int = 90, max_content_bytes: int = 65536) -> None:
     if max_age_days < 1:
