@@ -90,7 +90,9 @@ def audit(
             click.echo(f"Database not found: {db_path}", err=True)
             ctx.exit(1)
             return
-        trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
+        trail = ContextTrail(
+            storage_path=db_path, signing_key=ctx.obj.get("signing_key")
+        )
     try:
         records = trail.query(source=source, limit=limit, start=start, end=end)
 
@@ -119,7 +121,9 @@ def verify(ctx: click.Context) -> None:
             click.echo(f"Database not found: {db_path}", err=True)
             ctx.exit(1)
             return
-        trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
+        trail = ContextTrail(
+            storage_path=db_path, signing_key=ctx.obj.get("signing_key")
+        )
     try:
         verdict = trail.verify_chain()
 
@@ -163,7 +167,9 @@ def report(ctx: click.Context, fmt: str, output: str | None) -> None:
             click.echo(f"Database not found: {db_path}", err=True)
             ctx.exit(1)
             return
-        trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
+        trail = ContextTrail(
+            storage_path=db_path, signing_key=ctx.obj.get("signing_key")
+        )
     try:
         summary = trail.summary()
         verdict = trail.verify_chain()
@@ -246,7 +252,9 @@ def retain(
             click.echo(f"Database not found: {db_path}", err=True)
             ctx.exit(1)
             return
-        trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
+        trail = ContextTrail(
+            storage_path=db_path, signing_key=ctx.obj.get("signing_key")
+        )
     try:
         from provena.retention import RetentionEngine
 
@@ -286,7 +294,9 @@ def summary(ctx: click.Context) -> None:
             click.echo(f"Database not found: {db_path}", err=True)
             ctx.exit(1)
             return
-        trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
+        trail = ContextTrail(
+            storage_path=db_path, signing_key=ctx.obj.get("signing_key")
+        )
     try:
         s = trail.summary()
         h = trail.health()
