@@ -5,8 +5,14 @@ All tests use mock objects so they run without the framework installed.
 
 from __future__ import annotations
 
+import asyncio
+import sys
+import threading
+from types import ModuleType, SimpleNamespace
+
 import pytest
 
+from provena.models import ContextSource
 from provena.trail import ContextTrail
 
 
@@ -151,6 +157,96 @@ try:
     _has_openai_agents = True
 except ImportError:
     pass
+
+
+@pytest.fixture
+def openai_run_hooks(monkeypatch):
+    module_name = "provena.integrations.openai_agents"
+    previous_module = sys.modules.pop(module_name, None)
+
+    agents_module = ModuleType("agents")
+    lifecycle_module = ModuleType("agents.lifecycle")
+
+    class MockRunHooks:
+        def __class_getitem__(cls, item):
+            return cls
+
+    agents_module.RunHooks = MockRunHooks
+    lifecycle_module.RunHooksContext = object
+    monkeypatch.setitem(sys.modules, "agents", agents_module)
+    monkeypatch.setitem(sys.modules, "agents.lifecycle", lifecycle_module)
+
+    from provena.integrations.openai_agents import ProvenaRunHooks
+
+    yield ProvenaRunHooks
+
+    sys.modules.pop(module_name, None)
+    if previous_module is not None:
+        sys.modules[module_name] = previous_module
+
+
+class BlockingTrail:
+    def __init__(self):
+        self.release = threading.Event()
+        self.calls = []
+
+    def log(self, **kwargs):
+        self.release.wait(timeout=0.5)
+        self.calls.append(kwargs)
+
+
+async def assert_hook_does_not_block(coroutine, trail, expected_call):
+    task = asyncio.create_task(coroutine)
+    await asyncio.sleep(0)
+
+    try:
+        assert not task.done(), "hook blocked the event loop until log() returned"
+    finally:
+        trail.release.set()
+        await task
+
+    assert trail.calls == [expected_call]
+
+
+class TestOpenAIAgentsHooks:
+    async def test_on_tool_end_does_not_block_event_loop(self, openai_run_hooks):
+        trail = BlockingTrail()
+        hook = openai_run_hooks(trail=trail)
+
+        await assert_hook_does_not_block(
+            hook.on_tool_end(
+                None,
+                SimpleNamespace(name="researcher"),
+                SimpleNamespace(name="web_search"),
+                "search results",
+            ),
+            trail,
+            {
+                "content": "search results",
+                "source": ContextSource.TOOL,
+                "source_name": "openai:web_search",
+                "metadata": {"agent": "researcher"},
+            },
+        )
+
+    async def test_on_handoff_does_not_block_event_loop(self, openai_run_hooks):
+        trail = BlockingTrail()
+        hook = openai_run_hooks(trail=trail)
+
+        await assert_hook_does_not_block(
+            hook.on_handoff(
+                None,
+                SimpleNamespace(name="researcher"),
+                SimpleNamespace(name="writer"),
+            ),
+            trail,
+            {
+                "content": "Handoff from researcher to writer",
+                "source": ContextSource.AGENT,
+                "source_name": "openai:researcher",
+                "metadata": {"to_agent": "writer"},
+            },
+        )
 
 
 class TestOpenAIAgentsImportError:

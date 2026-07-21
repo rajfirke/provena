@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from provena.models import ContextSource
@@ -37,7 +38,8 @@ try:
         ) -> None:
             tool_name = getattr(tool, "name", "unknown")
             agent_name = getattr(agent, "name", "unknown")
-            self._trail.log(
+            await asyncio.to_thread(
+                self._trail.log,
                 content=result,
                 source=ContextSource.TOOL,
                 source_name=f"openai:{tool_name}",
@@ -52,7 +54,8 @@ try:
         ) -> None:
             from_name = getattr(from_agent, "name", "unknown")
             to_name = getattr(to_agent, "name", "unknown")
-            self._trail.log(
+            await asyncio.to_thread(
+                self._trail.log,
                 content=f"Handoff from {from_name} to {to_name}",
                 source=ContextSource.AGENT,
                 source_name=f"openai:{from_name}",
