@@ -38,7 +38,8 @@ _logger = logging.getLogger("provena")
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-_DISABLED = os.environ.get("PROVENA_DISABLED", "").lower() in ("1", "true", "yes")
+_DISABLED = os.environ.get(
+    "PROVENA_DISABLED", "").lower() in ("1", "true", "yes")
 
 
 class ContextTrail:
@@ -116,7 +117,8 @@ class ContextTrail:
             self._apply_config(config)
             return
 
-        _validate_config(max_age_days=max_age_days, max_content_bytes=max_content_bytes)
+        _validate_config(max_age_days=max_age_days,
+                         max_content_bytes=max_content_bytes)
 
         self._strict = strict_mode
         self._on_error = on_error
@@ -186,7 +188,8 @@ class ContextTrail:
         key = _resolve_signing_key(key_value)
         self._hasher = ChainHasher(signing_key=key)
         self._policy_engine = (
-            PolicyEngine.from_config(policy_config) if policy_config else PolicyEngine()
+            PolicyEngine.from_config(
+                policy_config) if policy_config else PolicyEngine()
         )
         self._update_signing_policies()
         self._validator = ProvenanceValidator(
@@ -406,7 +409,8 @@ class ContextTrail:
         source: ContextSource | str,
         source_name: str = "",
         *,
-        content_extractor: Callable[..., str | bytes | list[Any]] | None = None,
+        content_extractor: Callable[..., str |
+                                    bytes | list[Any]] | None = None,
         policies: list[Policy] | None = None,
     ) -> Callable[[F], F]:
         """Decorator that automatically logs function return values to the trail.
@@ -426,7 +430,8 @@ class ContextTrail:
         Returns:
             A decorator that wraps the target function with trail logging.
         """
-        override_engine = PolicyEngine(policies) if policies is not None else None
+        override_engine = PolicyEngine(
+            policies) if policies is not None else None
 
         def decorator(func: F) -> F:
             if _DISABLED:
@@ -533,7 +538,8 @@ class ContextTrail:
         if hasattr(result, "metadata") and isinstance(result.metadata, dict):
             meta = result.metadata
             created_at = (
-                meta.get("created_at") or meta.get("date") or meta.get("last_modified")
+                meta.get("created_at") or meta.get(
+                    "date") or meta.get("last_modified")
             )
             if isinstance(created_at, str):
                 try:
@@ -609,7 +615,8 @@ class ContextTrail:
         Returns:
             A list of record dictionaries matching the filters.
         """
-        source_str = source.value if isinstance(source, ContextSource) else source
+        source_str = source.value if isinstance(
+            source, ContextSource) else source
         return self._backend.query(
             source=source_str,
             start=start,
@@ -719,7 +726,8 @@ class ContextTrail:
             writer.writerow(fieldnames)
 
             for record in records:
-                writer.writerow([record.get(field, "") for field in fieldnames])
+                writer.writerow([record.get(field, "")
+                                for field in fieldnames])
 
             return output.getvalue()
 
@@ -789,12 +797,22 @@ class ContextTrail:
         """Exit the context manager, closing the storage backend."""
         self.close()
 
+    def __repr__(self) -> str:
+        return (
+            f"ContextTrail("
+            f"backend={type(self._backend).__name__}, "
+            f"records={self._backend.count()}, "
+            f"signed={self._hasher.is_signed}"
+            f")"
+        )
+
 
 def _validate_config(max_age_days: int = 90, max_content_bytes: int = 65536) -> None:
     if max_age_days < 1:
         raise ValueError(f"max_age_days must be >= 1, got {max_age_days}")
     if max_content_bytes < 1:
-        raise ValueError(f"max_content_bytes must be >= 1, got {max_content_bytes}")
+        raise ValueError(
+            f"max_content_bytes must be >= 1, got {max_content_bytes}")
 
 
 def _resolve_signing_key(key: str | bytes | None) -> bytes | None:

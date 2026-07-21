@@ -635,6 +635,11 @@ class TestContextTrailContextManager:
         with ContextTrail(backend="memory") as trail:
             trail.log("test", source="retriever")
             assert trail.summary()["total"] == 1
+    
+    def test_repr(self, memory_trail):
+        r = repr(memory_trail)
+        assert "ContextTrail" in r
+        assert "InMemoryBackend" in r
 
 
 class TestDisabledMode:
