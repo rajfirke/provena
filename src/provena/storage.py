@@ -105,7 +105,9 @@ class SQLiteBackend:
         """Open or create a SQLite database at the given path."""
         self._path = path
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(path, check_same_thread=False)
+        self._conn: sqlite3.Connection | None = sqlite3.connect(
+            path, check_same_thread=False
+        )
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
@@ -113,10 +115,16 @@ class SQLiteBackend:
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._init_schema()
 
+    def _check_open(self) -> sqlite3.Connection:
+        if self._conn is None:
+            raise RuntimeError("SQLiteBackend is closed")
+        return self._conn
+
     def _init_schema(self) -> None:
-        version = self._conn.execute("PRAGMA user_version").fetchone()[0]
+        conn = self._check_open()
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
-            self._conn.executescript(
+            conn.executescript(
                 f"PRAGMA user_version = {SCHEMA_VERSION};\n"
                 + _CREATE_TABLE
                 + _CREATE_ANNOTATIONS
@@ -125,18 +133,20 @@ class SQLiteBackend:
             self._migrate(version)
 
     def _migrate(self, from_version: int) -> None:
+        conn = self._check_open()
         if from_version < 2:
-            self._conn.execute(
+            conn.execute(
                 "ALTER TABLE trail ADD COLUMN freshness_status "
                 "TEXT NOT NULL DEFAULT 'UNKNOWN'"
             )
-            self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            self._conn.commit()
+            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            conn.commit()
 
     def append(self, record: dict[str, Any]) -> int:
         """Append a record and return its assigned ID."""
         with self._lock:
-            cursor = self._conn.execute(
+            conn = self._check_open()
+            cursor = conn.execute(
                 "INSERT INTO trail "
                 "(content_hash, source, source_name, timestamp, "
                 "provenance_json, provenance_status, missing_fields, "
@@ -161,13 +171,14 @@ class SQLiteBackend:
                     1 if record.get("truncated") else 0,
                 ),
             )
-            self._conn.commit()
+            conn.commit()
             return cursor.lastrowid  # type: ignore[return-value]
 
     def get(self, record_id: int) -> dict[str, Any] | None:
         """Retrieve a record by ID, or None if not found."""
         with self._lock:
-            row = self._conn.execute(
+            conn = self._check_open()
+            row = conn.execute(
                 "SELECT * FROM trail WHERE id = ?", (record_id,)
             ).fetchone()
             return dict(row) if row else None
@@ -175,7 +186,8 @@ class SQLiteBackend:
     def get_last(self) -> dict[str, Any] | None:
         """Retrieve the most recently appended record, or None."""
         with self._lock:
-            row = self._conn.execute(
+            conn = self._check_open()
+            row = conn.execute(
                 "SELECT * FROM trail ORDER BY id DESC LIMIT 1"
             ).fetchone()
             return dict(row) if row else None
@@ -183,13 +195,15 @@ class SQLiteBackend:
     def count(self) -> int:
         """Return the total number of records."""
         with self._lock:
-            row = self._conn.execute("SELECT COUNT(*) FROM trail").fetchone()
+            conn = self._check_open()
+            row = conn.execute("SELECT COUNT(*) FROM trail").fetchone()
             return int(row[0])
 
     def all_records(self) -> list[dict[str, Any]]:
         """Return all records ordered by ID."""
         with self._lock:
-            rows = self._conn.execute("SELECT * FROM trail ORDER BY id ASC").fetchall()
+            conn = self._check_open()
+            rows = conn.execute("SELECT * FROM trail ORDER BY id ASC").fetchall()
             return [dict(r) for r in rows]
 
     def query(
@@ -227,7 +241,8 @@ class SQLiteBackend:
         params.append(limit)
 
         with self._lock:
-            rows = self._conn.execute(sql, params).fetchall()
+            conn = self._check_open()
+            rows = conn.execute(sql, params).fetchall()
             return [dict(r) for r in rows]
 
     def add_annotation(
@@ -235,17 +250,19 @@ class SQLiteBackend:
     ) -> int:
         """Add an annotation to a record and return the annotation ID."""
         with self._lock:
-            cursor = self._conn.execute(
+            conn = self._check_open()
+            cursor = conn.execute(
                 "INSERT INTO annotations (record_id, note, reviewer, timestamp) "
                 "VALUES (?, ?, ?, ?)",
                 (record_id, note, reviewer, timestamp),
             )
-            self._conn.commit()
+            conn.commit()
             return cursor.lastrowid  # type: ignore[return-value]
 
     def get_annotations(self, record_id: int) -> list[dict[str, Any]]:
         with self._lock:
-            rows = self._conn.execute(
+            conn = self._check_open()
+            rows = conn.execute(
                 "SELECT id, record_id, note, reviewer, timestamp "
                 "FROM annotations WHERE record_id = ? ORDER BY id ASC",
                 (record_id,),
@@ -254,9 +271,10 @@ class SQLiteBackend:
 
     def close(self) -> None:
         """Close the backend and release resources."""
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None  # type: ignore[assignment]
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
 
 
 class InMemoryBackend:
