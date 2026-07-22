@@ -75,6 +75,15 @@ class PolicyEvaluation:
         """Return only the failing check results."""
         return tuple(r for r in self.results if not r.passed)
 
+    def __repr__(self) -> str:
+        n = len(self.results)
+        if self.decision == "DENY":
+            v = len(self.violations)
+            label = "violation" if v == 1 else "violations"
+            return f"PolicyEvaluation(DENY, {v} {label})"
+        label = "check" if n == 1 else "checks"
+        return f"PolicyEvaluation(ALLOW, {n} {label})"
+
 
 @dataclass(frozen=True, slots=True)
 class Policy:

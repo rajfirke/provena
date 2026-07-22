@@ -647,6 +647,16 @@ class ContextTrail:
         """
         return self._backend.get_annotations(record_id)
 
+    @property
+    def record_count(self) -> int:
+        """Total number of records in the audit trail."""
+        return self._backend.count()
+
+    @property
+    def last_record(self) -> dict[str, Any] | None:
+        """The most recently logged record, or None if the trail is empty."""
+        return self._backend.get_last()
+
     def summary(self) -> dict[str, Any]:
         """Generate an aggregate summary of the audit trail.
 
