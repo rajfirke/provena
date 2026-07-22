@@ -663,8 +663,12 @@ class TestResultReprs:
     def test_validation_result_missing_fields(self):
         from provena.models import ValidationResult
 
-        r = ValidationResult(status="MISSING", missing_fields=("source_url", "created_at"))
-        assert repr(r) == "ValidationResult(MISSING, fields=('source_url', 'created_at'))"
+        r = ValidationResult(
+            status="MISSING", missing_fields=("source_url", "created_at")
+        )
+        assert (
+            repr(r) == "ValidationResult(MISSING, fields=('source_url', 'created_at'))"
+        )
 
     def test_freshness_result_fresh(self):
         from provena.models import FreshnessResult
