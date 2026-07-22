@@ -81,13 +81,18 @@ def audit(
     fmt: str,
 ) -> None:
     """Query the context governance audit log."""
-    db_path = ctx.obj["db"]
-    if not _is_pg_url(db_path) and not os.path.exists(db_path):
-        click.echo(f"Database not found: {db_path}", err=True)
-        ctx.exit(1)
-        return
-
-    trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
+    config_path = ctx.obj.get("config_path")
+    if config_path:
+        trail = ContextTrail(config=config_path)
+    else:
+        db_path = ctx.obj["db"]
+        if not _is_pg_url(db_path) and not os.path.exists(db_path):
+            click.echo(f"Database not found: {db_path}", err=True)
+            ctx.exit(1)
+            return
+        trail = ContextTrail(
+            storage_path=db_path, signing_key=ctx.obj.get("signing_key")
+        )
     try:
         records = trail.query(source=source, limit=limit, start=start, end=end)
 
@@ -107,13 +112,18 @@ def audit(
 @click.pass_context
 def verify(ctx: click.Context) -> None:
     """Verify the integrity of the hash-chained audit trail."""
-    db_path = ctx.obj["db"]
-    if not _is_pg_url(db_path) and not os.path.exists(db_path):
-        click.echo(f"Database not found: {db_path}", err=True)
-        ctx.exit(1)
-        return
-
-    trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
+    config_path = ctx.obj.get("config_path")
+    if config_path:
+        trail = ContextTrail(config=config_path)
+    else:
+        db_path = ctx.obj["db"]
+        if not _is_pg_url(db_path) and not os.path.exists(db_path):
+            click.echo(f"Database not found: {db_path}", err=True)
+            ctx.exit(1)
+            return
+        trail = ContextTrail(
+            storage_path=db_path, signing_key=ctx.obj.get("signing_key")
+        )
     try:
         verdict = trail.verify_chain()
 
@@ -147,13 +157,19 @@ def verify(ctx: click.Context) -> None:
 @click.pass_context
 def report(ctx: click.Context, fmt: str, output: str | None) -> None:
     """Generate a context governance compliance report."""
-    db_path = ctx.obj["db"]
-    if not _is_pg_url(db_path) and not os.path.exists(db_path):
-        click.echo(f"Database not found: {db_path}", err=True)
-        ctx.exit(1)
-        return
-
-    trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
+    config_path = ctx.obj.get("config_path")
+    if config_path:
+        trail = ContextTrail(config=config_path)
+        db_path = config_path  # Use config path for report metadata
+    else:
+        db_path = ctx.obj["db"]
+        if not _is_pg_url(db_path) and not os.path.exists(db_path):
+            click.echo(f"Database not found: {db_path}", err=True)
+            ctx.exit(1)
+            return
+        trail = ContextTrail(
+            storage_path=db_path, signing_key=ctx.obj.get("signing_key")
+        )
     try:
         summary = trail.summary()
         verdict = trail.verify_chain()
@@ -227,13 +243,18 @@ def retain(
     ctx: click.Context, max_age: int, archive: str | None, dry_run: bool
 ) -> None:
     """Apply retention policy — delete old records with optional archive."""
-    db_path = ctx.obj["db"]
-    if not _is_pg_url(db_path) and not os.path.exists(db_path):
-        click.echo(f"Database not found: {db_path}", err=True)
-        ctx.exit(1)
-        return
-
-    trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
+    config_path = ctx.obj.get("config_path")
+    if config_path:
+        trail = ContextTrail(config=config_path)
+    else:
+        db_path = ctx.obj["db"]
+        if not _is_pg_url(db_path) and not os.path.exists(db_path):
+            click.echo(f"Database not found: {db_path}", err=True)
+            ctx.exit(1)
+            return
+        trail = ContextTrail(
+            storage_path=db_path, signing_key=ctx.obj.get("signing_key")
+        )
     try:
         from provena.retention import RetentionEngine
 
@@ -264,13 +285,18 @@ def retain(
 @click.pass_context
 def summary(ctx: click.Context) -> None:
     """Show a quick summary of the audit trail."""
-    db_path = ctx.obj["db"]
-    if not _is_pg_url(db_path) and not os.path.exists(db_path):
-        click.echo(f"Database not found: {db_path}", err=True)
-        ctx.exit(1)
-        return
-
-    trail = ContextTrail(storage_path=db_path, signing_key=ctx.obj.get("signing_key"))
+    config_path = ctx.obj.get("config_path")
+    if config_path:
+        trail = ContextTrail(config=config_path)
+    else:
+        db_path = ctx.obj["db"]
+        if not _is_pg_url(db_path) and not os.path.exists(db_path):
+            click.echo(f"Database not found: {db_path}", err=True)
+            ctx.exit(1)
+            return
+        trail = ContextTrail(
+            storage_path=db_path, signing_key=ctx.obj.get("signing_key")
+        )
     try:
         s = trail.summary()
         h = trail.health()
