@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import functools
+import hmac
 import inspect
 import io
 import json
@@ -571,7 +572,7 @@ class ContextTrail:
                 source=record["source"],
                 timestamp=record["timestamp"],
             )
-            if expected != record["chain_hash"]:
+            if not hmac.compare_digest(expected, record["chain_hash"]):
                 return ChainVerdict(
                     intact=False,
                     total_records=len(records),

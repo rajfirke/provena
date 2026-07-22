@@ -120,5 +120,9 @@ def _weak_flush(
     """Last-resort flush via weakref.finalize."""
     with lock:
         while buffer:
-            record = buffer.popleft()
-            backend.append(record)
+            record = buffer[0]
+            try:
+                backend.append(record)
+            except Exception:
+                break
+            buffer.popleft()
