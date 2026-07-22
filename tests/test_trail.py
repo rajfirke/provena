@@ -642,6 +642,94 @@ class TestContextTrailContextManager:
         assert "InMemoryBackend" in r
 
 
+class TestResultReprs:
+    def test_chain_verdict_intact(self):
+        from provena.models import ChainVerdict
+
+        v = ChainVerdict(intact=True, total_records=42)
+        assert repr(v) == "ChainVerdict(intact=True, records=42)"
+
+    def test_chain_verdict_broken(self):
+        from provena.models import ChainVerdict
+
+        v = ChainVerdict(intact=False, total_records=42, broken_at=7)
+        assert repr(v) == "ChainVerdict(intact=False, broken_at=7, records=42)"
+
+    def test_validation_result_valid(self):
+        from provena.models import ValidationResult
+
+        assert repr(ValidationResult(status="VALID")) == "ValidationResult(VALID)"
+
+    def test_validation_result_missing_fields(self):
+        from provena.models import ValidationResult
+
+        r = ValidationResult(status="MISSING", missing_fields=("source_url", "created_at"))
+        assert repr(r) == "ValidationResult(MISSING, fields=('source_url', 'created_at'))"
+
+    def test_freshness_result_fresh(self):
+        from provena.models import FreshnessResult
+
+        assert repr(FreshnessResult(status="FRESH")) == "FreshnessResult(FRESH)"
+
+    def test_freshness_result_stale_with_date(self):
+        from datetime import datetime, timezone
+
+        from provena.models import FreshnessResult
+
+        r = FreshnessResult(
+            status="STALE",
+            detected_date=datetime(2023, 1, 15, tzinfo=timezone.utc),
+        )
+        assert repr(r) == "FreshnessResult(STALE, date=2023-01-15)"
+
+    def test_policy_evaluation_allow(self):
+        from provena.policy import EnforcementLevel, PolicyCheckResult, PolicyEvaluation
+
+        checks = tuple(
+            PolicyCheckResult(
+                policy_name=f"p{i}",
+                passed=True,
+                enforcement=EnforcementLevel.LOG,
+            )
+            for i in range(3)
+        )
+        ev = PolicyEvaluation(decision="ALLOW", results=checks)
+        assert repr(ev) == "PolicyEvaluation(ALLOW, 3 checks)"
+
+    def test_policy_evaluation_deny(self):
+        from provena.policy import EnforcementLevel, PolicyCheckResult, PolicyEvaluation
+
+        checks = (
+            PolicyCheckResult(
+                policy_name="block",
+                passed=False,
+                enforcement=EnforcementLevel.BLOCK,
+            ),
+        )
+        ev = PolicyEvaluation(decision="DENY", results=checks)
+        assert repr(ev) == "PolicyEvaluation(DENY, 1 violation)"
+
+
+class TestRecordCountAndLastRecord:
+    def test_record_count_empty(self, memory_trail):
+        assert memory_trail.record_count == 0
+
+    def test_record_count_after_log(self, memory_trail):
+        memory_trail.log("a", source="retriever")
+        memory_trail.log("b", source="tool")
+        assert memory_trail.record_count == 2
+
+    def test_last_record_empty(self, memory_trail):
+        assert memory_trail.last_record is None
+
+    def test_last_record_after_log(self, memory_trail):
+        memory_trail.log("first", source="retriever")
+        memory_trail.log("second", source="tool")
+        last = memory_trail.last_record
+        assert last is not None
+        assert last["source"] == "tool"
+
+
 class TestDisabledMode:
     def test_disabled_via_env(self, monkeypatch):
         monkeypatch.setenv("PROVENA_DISABLED", "1")

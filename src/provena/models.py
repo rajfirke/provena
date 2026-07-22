@@ -83,6 +83,11 @@ class ValidationResult:
     missing_fields: tuple[str, ...] = ()
     details: str = ""
 
+    def __repr__(self) -> str:
+        if self.missing_fields:
+            return f"ValidationResult({self.status}, fields={self.missing_fields!r})"
+        return f"ValidationResult({self.status})"
+
 
 @dataclass(frozen=True, slots=True)
 class FreshnessResult:
@@ -97,6 +102,12 @@ class FreshnessResult:
     status: Literal["FRESH", "STALE", "UNKNOWN"]
     details: str = ""
     detected_date: datetime | None = None
+
+    def __repr__(self) -> str:
+        if self.detected_date is not None:
+            date_str = self.detected_date.date().isoformat()
+            return f"FreshnessResult({self.status}, date={date_str})"
+        return f"FreshnessResult({self.status})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,6 +256,14 @@ class ChainVerdict:
     total_records: int
     broken_at: int | None = None
     details: str = ""
+
+    def __repr__(self) -> str:
+        if self.intact:
+            return f"ChainVerdict(intact=True, records={self.total_records})"
+        return (
+            f"ChainVerdict(intact=False, broken_at={self.broken_at}, "
+            f"records={self.total_records})"
+        )
 
 
 def _parse_source(
