@@ -4,6 +4,43 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.0] - 2026-07-22
+
+### Production Release
+
+Provena v1.0.0 marks production readiness. All 8 planned phases are complete.
+Semantic versioning commitment: the 1.x API surface is stable.
+
+### Core
+- Tamper-evident SHA-256 hash-chained audit trails with HMAC signing
+- Provenance validation (VALID / MISSING / INCOMPLETE)
+- Freshness checking via metadata timestamps and regex temporal detection
+- Policy engine with LOG / WARN / BLOCK enforcement
+- Async batch write buffer for 10K+ entries/sec throughput
+- TOML / YAML config file support with signing_key_env
+
+### Storage
+- SQLite backend (default) with WAL mode and PRAGMA optimizations
+- PostgreSQL backend with psycopg v3, connection pooling, advisory locks
+- InMemory backend for testing
+- Migration CLI between backends
+
+### Integrations
+- 6 framework adapters: LangChain, LlamaIndex, CrewAI, AutoGen, OpenAI
+  Agents SDK, Google ADK
+- OpenTelemetry span export
+- MCP governance server (5 tools, 3 resources, 1 prompt)
+
+### Governance
+- Multi-trail aggregation with handoff tracking and evidence gap detection
+- Retention policy engine with EU AI Act 180-day minimum enforcement
+- Compliance report generator with EU AI Act article-by-article scoring
+- PDF report output
+
+### Security (since 0.15.0)
+- verify_chain() now uses hmac.compare_digest() for timing-safe comparison
+- _weak_flush uses peek-before-pop to prevent data loss
+
 ## [0.15.0] - 2026-07-20
 
 ### Fixed

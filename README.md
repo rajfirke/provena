@@ -7,7 +7,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-**Context governance for agentic AI systems.** (MVP)
+**Context governance for agentic AI systems.**
 
 Your AI agent just made a decision based on data from 6 different sources.
 Can you tell me which ones? Can you prove the data wasn't tampered with?

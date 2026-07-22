@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "provena"
-version = "0.15.0"
+version = "1.0.0"
 description = "Context governance for agentic AI — tamper-evident audit trails for LLM context inputs"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,7 +18,7 @@ keywords = [
     "provenance", "eu-ai-act", "owasp", "agentic",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
