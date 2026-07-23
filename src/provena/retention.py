@@ -173,7 +173,7 @@ class RetentionEngine:
             archived=archived_count,
             deleted=deleted_count,
             archive_path=archive_path,
-            details=f"Retained {deleted_count} records older than {self._retention_days} days",
+            details=f"Purged {deleted_count} records older than {self._retention_days} days",
         )
 
     def _delete_expired(self, expired: list[dict[str, Any]]) -> int:
