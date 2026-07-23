@@ -32,7 +32,9 @@ def generate_report(
         return _render_text(data)
     if format == "pdf":
         return _render_pdf_string(data)
-    return json.dumps(data, indent=2, default=str)
+    raise ValueError(
+        f"Unsupported format '{format}'. Valid formats are: text, json, pdf."
+    )
 
 
 def generate_pdf_report(
