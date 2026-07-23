@@ -108,3 +108,9 @@ class TestReportEmpty:
         assert report["summary"]["total_records"] == 0
         assert report["compliance_score"] == 25
         trail.close()
+
+
+class TestReportInvalidFormats:
+    def test_invalid_format(self, trail_with_data):
+        with pytest.raises(ValueError, match="Unsupported format"):
+            generate_report(trail_with_data, format="html")
