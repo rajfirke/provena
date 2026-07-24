@@ -523,6 +523,11 @@ class TestContextTrailExport:
         finally:
             os.unlink(db_path)
 
+    def test_export_invalid_format_raises(self, memory_trail):
+        memory_trail.log("test", source="retriever")
+        with pytest.raises(ValueError, match="Unsupported export format"):
+            memory_trail.export(format="xml")
+
 
 class TestContextTrailSigning:
     def test_signed_trail(self):

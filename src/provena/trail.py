@@ -734,11 +734,9 @@ class ContextTrail:
 
             return output.getvalue()
 
-        return json.dumps(records, default=str)
-
-    raise ValueError(
-        "Unsupported export format 'xml'. Use 'json', 'csv', or 'json_with_annotations'"
-    )
+        raise ValueError(
+            f"Unsupported export format {format}. Use 'json', 'csv', or 'json_with_annotations'"
+        )
 
     def health(self) -> dict[str, Any]:
         """Return a health-check dictionary for the trail.
