@@ -692,7 +692,7 @@ class ContextTrail:
         """Export all trail records in the specified format.
 
         Args:
-            format: Output format, either ``"json"`` or ``"csv"``.
+            format: Output format, either ``"json"`` or ``"csv"`` or ``"json_with_annotations"``.
 
         Returns:
             The serialized trail data as a string.
@@ -734,7 +734,9 @@ class ContextTrail:
 
             return output.getvalue()
 
-        return json.dumps(records, default=str)
+        raise ValueError(
+            f"Unsupported export format {format}. Use 'json', 'csv', or 'json_with_annotations'"
+        )
 
     def health(self) -> dict[str, Any]:
         """Return a health-check dictionary for the trail.
