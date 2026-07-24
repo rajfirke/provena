@@ -692,7 +692,7 @@ class ContextTrail:
         """Export all trail records in the specified format.
 
         Args:
-            format: Output format, either ``"json"`` or ``"csv"``.
+            format: Output format, either ``"json"`` or ``"csv"`` or ``"json_with_annotations"``.
 
         Returns:
             The serialized trail data as a string.
