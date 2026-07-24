@@ -182,6 +182,12 @@ class PolicyEngine:
                 policies.append(
                     source_allowlist(allowed=allowed, enforcement=enforcement)
                 )
+            else:
+                _logger.warning(
+                    "Unknown policy check %r — skipping. "
+                    "Valid checks: freshness, provenance, require_signing, source_allowlist",
+                    check_name,
+                )
 
         return cls(policies)
 
