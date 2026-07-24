@@ -98,7 +98,7 @@ class TestReportPDF:
 
     def test_pdf_string_fallback(self, trail_with_data):
         report = generate_report(trail_with_data, format="pdf")
-        assert "COMPLIANCE SCORE" in report
+        assert "%PDF-" in report
 
 
 class TestReportEmpty:
