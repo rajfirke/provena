@@ -12,7 +12,7 @@ def generate_report(
     *,
     format: str = "json",
     title: str = "Provena Governance Compliance Report",
-) -> str:
+) -> str | bytes:
     """Generate a compliance report from a ContextTrail.
 
     Args:
@@ -22,7 +22,7 @@ def generate_report(
 
     Returns:
         The report content as a string. For PDF, returns the raw bytes
-        as a string (use ``generate_pdf_report`` for file output).
+        as output.
     """
     data = _collect_report_data(trail, title=title)
 
@@ -222,7 +222,7 @@ def _render_text(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _render_pdf_string(data: dict[str, Any]) -> str:
+def _render_pdf_string(data: dict[str, Any]) -> bytes:
     """
     Helper function to generate a PDF compliance report and write it to stdout.
 
@@ -236,7 +236,7 @@ def _render_pdf_string(data: dict[str, Any]) -> str:
         ImportError: If ``fpdf2`` is not installed.
     """
     pdf = _build_pdf(data, _load_fpdf())
-    return str(bytes(pdf.output()))
+    return bytes(pdf.output())
 
 
 def _build_pdf(data: dict[str, Any], fpdf_class: type) -> Any:
