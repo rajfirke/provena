@@ -12,7 +12,7 @@ def generate_report(
     *,
     format: str = "json",
     title: str = "Provena Governance Compliance Report",
-) -> str:
+) -> str | bytes:
     """Generate a compliance report from a ContextTrail.
 
     Args:
@@ -22,7 +22,7 @@ def generate_report(
 
     Returns:
         The report content as a string. For PDF, returns the raw bytes
-        as a string (use ``generate_pdf_report`` for file output).
+        as output.
     """
     data = _collect_report_data(trail, title=title)
 
@@ -56,15 +56,8 @@ def generate_pdf_report(
     Raises:
         ImportError: If ``fpdf2`` is not installed.
     """
-    try:
-        from fpdf import FPDF
-    except ImportError:
-        raise ImportError(
-            "fpdf2 is required for PDF reports. Install with: pip install provena[pdf]"
-        ) from None
-
     data = _collect_report_data(trail, title=title)
-    pdf = _build_pdf(data, FPDF)
+    pdf = _build_pdf(data, _load_fpdf())
     pdf.output(output_path)
     return output_path
 
@@ -88,7 +81,7 @@ def _collect_report_data(trail: Any, *, title: str = "") -> dict[str, Any]:
         checks_passed += 1
     else:
         issues.append(
-            f"Hash chain broken at record {verdict.broken_at} — "
+            f"Hash chain broken at record {verdict.broken_at} - "
             "tamper-evident logging compromised (Art. 12)"
         )
 
@@ -97,7 +90,7 @@ def _collect_report_data(trail: Any, *, title: str = "") -> dict[str, Any]:
     elif total > 0:
         pct = round(valid_count / total * 100)
         issues.append(
-            f"Only {pct}% of records have valid provenance — "
+            f"Only {pct}% of records have valid provenance - "
             "data lineage incomplete (Art. 10)"
         )
 
@@ -105,7 +98,7 @@ def _collect_report_data(trail: Any, *, title: str = "") -> dict[str, Any]:
         checks_passed += 1
     elif total > 0:
         issues.append(
-            f"{stale_count} stale records detected — "
+            f"{stale_count} stale records detected - "
             "context freshness monitoring needed"
         )
 
@@ -113,7 +106,7 @@ def _collect_report_data(trail: Any, *, title: str = "") -> dict[str, Any]:
         checks_passed += 1
     else:
         issues.append(
-            "Trail is not HMAC-signed — "
+            "Trail is not HMAC-signed - "
             "consider enabling signing for tamper resistance (Art. 12)"
         )
 
@@ -229,8 +222,21 @@ def _render_text(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _render_pdf_string(data: dict[str, Any]) -> str:
-    return _render_text(data)
+def _render_pdf_string(data: dict[str, Any]) -> bytes:
+    """
+    Helper function to generate a PDF compliance report and write it to stdout.
+
+    Args:
+        data: Data to be formatted into a pdf.
+
+    Returns:
+        Byte string to be outputted.
+
+    Raises:
+        ImportError: If ``fpdf2`` is not installed.
+    """
+    pdf = _build_pdf(data, _load_fpdf())
+    return bytes(pdf.output())
 
 
 def _build_pdf(data: dict[str, Any], fpdf_class: type) -> Any:
@@ -317,3 +323,22 @@ def _build_pdf(data: dict[str, Any], fpdf_class: type) -> Any:
         )
 
     return pdf
+
+
+def _load_fpdf() -> Any:
+    """
+    Helper function to load and return the FPDF class.
+
+    Returns:
+        FPDF class.
+
+    Raises:
+        ImportError: If ``fpdf2`` is not installed.
+    """
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        raise ImportError(
+            "fpdf2 is required for PDF reports. Install with: pip install provena[pdf]"
+        ) from None
+    return FPDF

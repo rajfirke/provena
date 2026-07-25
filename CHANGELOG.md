@@ -4,6 +4,13 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **PDF Report Generation Bug** — Fixes an issue where generate_report(..., format="pdf")
+  returns the exact same plain text output as format="text".
+
 ## [1.0.0] - 2026-07-22
 
 ### Production Release
