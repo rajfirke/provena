@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -220,10 +221,13 @@ class TestPolicyEngineFromConfig:
         engine = PolicyEngine.from_config(config)
         assert engine.policies[0].enforcement == EnforcementLevel.LOG
 
-    def test_unknown_check_ignored(self):
+    def test_unknown_check_ignored(self, caplog):
         config = [{"check": "nonexistent"}]
-        engine = PolicyEngine.from_config(config)
+        with caplog.at_level(logging.WARNING, logger="provena.policy"):
+            engine = PolicyEngine.from_config(config)
         assert len(engine.policies) == 0
+        assert any("Unknown policy check" in msg for msg in caplog.messages)
+        assert any("nonexistent" in msg for msg in caplog.messages)
 
 
 class TestBuiltInPolicies:
