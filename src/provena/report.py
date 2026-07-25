@@ -327,10 +327,10 @@ def _build_pdf(data: dict[str, Any], fpdf_class: type) -> Any:
 
 def _load_fpdf() -> Any:
     """
-    Helper function to load FPDF and return an instance of it.
+    Helper function to load and return the FPDF class.
 
     Returns:
-        FPDF instance.
+        FPDF class.
 
     Raises:
         ImportError: If ``fpdf2`` is not installed.
