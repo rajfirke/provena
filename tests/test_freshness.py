@@ -238,6 +238,16 @@ class TestFreshnessCheckerTemporal:
         result = checker.check(entry, content=content, now=now)
         assert result.status == "STALE"
 
+    def test_year_context_in(self):
+        now = datetime(2026, 7, 13, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        content = "This pricing guide was written in 2019."
+        entry = _entry(content=content)
+        result = checker.check(entry, content=content, now=now)
+        assert result.status == "STALE"
+        assert result.detected_date is not None
+        assert result.detected_date.year == 2019
+
     def test_no_temporal_markers(self):
         now = datetime(2026, 7, 13, tzinfo=timezone.utc)
         checker = FreshnessChecker(max_age_days=90)
