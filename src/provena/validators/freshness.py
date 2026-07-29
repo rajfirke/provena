@@ -66,7 +66,8 @@ class _TemporalPatterns:
         self.half_year = re.compile(r"\bH([12])\s+(20\d{2})\b", re.IGNORECASE)
         # "as of 2023", "in 2024", "since 2022", "from 2023", "circa 2024"
         self.year_context = re.compile(
-            r"\b(?:as\s+of|in|since|circa|from|during)\s+((?:19|20)\d{2})\b", re.IGNORECASE
+            r"\b(?:as\s+of|in|since|circa|from|during)\s+((?:19|20)\d{2})\b",
+            re.IGNORECASE,
         )
         # "last updated: March 2024", "published on 2024-01-15",
         # "revised December 2023", "effective date: 2024-03-01"
