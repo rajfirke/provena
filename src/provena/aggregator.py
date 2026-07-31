@@ -186,6 +186,7 @@ class TrailAggregator:
             "freshness": agg_fresh,
             "sources": agg_sources,
             "handoffs": len(self._handoffs),
+            "all_signed": all(t.is_signed for t in self._trails.values()),
             "per_trail": per_trail,
         }
 
