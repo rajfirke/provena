@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 
+import pytest
 from click.testing import CliRunner
 
 from provena.cli.main import cli
@@ -22,6 +23,40 @@ def _create_trail_db(num_records: int = 3) -> str:
         trail.log(f"context entry {i}", source="retriever", source_name=f"src_{i}")
     trail.close()
     return db_path
+
+
+@pytest.mark.parametrize("command", ["audit", "verify", "report", "retain", "summary"])
+def test_missing_config_error_is_clean(command: str, tmp_path):
+    config_path = tmp_path / "missing.toml"
+
+    result = CliRunner().invoke(cli, ["--config", str(config_path), command])
+
+    assert result.exit_code == 1
+    assert result.output == f"Config file not found: {config_path}\n"
+    assert "Traceback" not in result.output
+
+
+@pytest.mark.parametrize("command", ["audit", "verify", "report", "retain", "summary"])
+def test_malformed_yaml_config_error_is_clean(command: str, tmp_path):
+    config_path = tmp_path / "invalid.yaml"
+    config_path.write_text("storage: [")
+
+    result = CliRunner().invoke(cli, ["--config", str(config_path), command])
+
+    assert result.exit_code == 1
+    assert result.output == f"Invalid YAML config: {config_path}\n"
+    assert "Traceback" not in result.output
+
+
+def test_unsupported_config_error_is_clean(tmp_path):
+    config_path = tmp_path / "invalid.txt"
+    config_path.write_text("not a supported config")
+
+    result = CliRunner().invoke(cli, ["--config", str(config_path), "audit"])
+
+    assert result.exit_code == 1
+    assert "Unsupported config file format: '.txt'" in result.output
+    assert "Traceback" not in result.output
 
 
 class TestCLIAudit:

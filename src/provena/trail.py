@@ -860,8 +860,11 @@ def _load_config_file(path: str | Path) -> dict[str, Any]:
                 "PyYAML is required for YAML config files. "
                 "Install with: pip install provena[yaml]"
             ) from None
-        with open(filepath) as f:
-            data = yaml.safe_load(f)
+        try:
+            with open(filepath) as f:
+                data = yaml.safe_load(f)
+        except yaml.YAMLError:
+            raise ValueError(f"Invalid YAML config: {filepath}") from None
         if not isinstance(data, dict):
             raise ValueError(
                 f"YAML config must be a mapping, got {type(data).__name__}"

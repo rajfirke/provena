@@ -4,6 +4,12 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- CLI commands now report missing or invalid `--config` files without a traceback (#108)
+
 ## [1.0.1] - 2026-07-25
 
 ### Fixed

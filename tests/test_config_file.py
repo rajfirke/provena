@@ -78,6 +78,13 @@ class TestConfigErrors:
         with pytest.raises(ValueError, match="YAML config must be a mapping"):
             ContextTrail(config=str(config_file))
 
+    def test_malformed_yaml_raises_value_error(self, tmp_path):
+        config_file = tmp_path / "malformed.yaml"
+        config_file.write_text("storage: [")
+
+        with pytest.raises(ValueError, match="Invalid YAML config"):
+            ContextTrail(config=str(config_file))
+
     def test_empty_config_dict_uses_defaults(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         trail = ContextTrail(config={})
