@@ -130,7 +130,6 @@ class TestAggregatedSummary:
 
         agg.close()
 
-
     def test_summary_mixed_signed(self):
         agg = TrailAggregator()
 
@@ -145,6 +144,7 @@ class TestAggregatedSummary:
         assert s["all_signed"] is False
 
         agg.close()
+
 
 class TestAggregatedQuery:
     def test_query_all(self, populated_aggregator):
