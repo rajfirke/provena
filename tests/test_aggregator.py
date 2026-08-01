@@ -115,6 +115,36 @@ class TestAggregatedSummary:
         assert s["total"] == 0
         assert s["trail_count"] == 0
 
+    def test_summary_all_signed(self):
+        agg = TrailAggregator()
+
+        trail1 = ContextTrail(backend="memory", signing_key="k1")
+        trail2 = ContextTrail(backend="memory", signing_key="k2")
+
+        agg.add("agent1", trail1)
+        agg.add("agent2", trail2)
+
+        s = agg.summary()
+
+        assert s["all_signed"] is True
+
+        agg.close()
+
+    def test_summary_mixed_signed(self):
+        agg = TrailAggregator()
+
+        trail1 = ContextTrail(backend="memory", signing_key="k1")
+        trail2 = ContextTrail(backend="memory")
+
+        agg.add("agent1", trail1)
+        agg.add("agent2", trail2)
+
+        s = agg.summary()
+
+        assert s["all_signed"] is False
+
+        agg.close()
+
 
 class TestAggregatedQuery:
     def test_query_all(self, populated_aggregator):

@@ -229,6 +229,18 @@ class TestPolicyEngineFromConfig:
         assert any("Unknown policy check" in msg for msg in caplog.messages)
         assert any("nonexistent" in msg for msg in caplog.messages)
 
+    def test_invalid_enforcement_ignored(self, caplog):
+        config = [
+            {"check": "freshness", "enforcement": "blocked"},
+            {"check": "provenance", "enforcement": "warn"},
+        ]
+        with caplog.at_level(logging.WARNING, logger="provena.policy"):
+            engine = PolicyEngine.from_config(config)
+        assert len(engine.policies) == 1
+        assert engine.policies[0].name == "provenance:MISSING"
+        assert any("Invalid enforcement level" in msg for msg in caplog.messages)
+        assert any("blocked" in msg for msg in caplog.messages)
+
 
 class TestBuiltInPolicies:
     def test_freshness_check_blocks_stale(self):

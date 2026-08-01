@@ -165,7 +165,17 @@ class PolicyEngine:
         policies: list[Policy] = []
         for entry in config:
             check_name = entry.get("check", "")
-            enforcement = EnforcementLevel(entry.get("enforcement", "log"))
+            enforcement_value = entry.get("enforcement", "log")
+            try:
+                enforcement = EnforcementLevel(enforcement_value)
+            except ValueError:
+                _logger.warning(
+                    "Invalid enforcement level %r for policy check %r — skipping. "
+                    "Valid levels: log, warn, block",
+                    enforcement_value,
+                    check_name,
+                )
+                continue
 
             if check_name == "freshness":
                 status = entry.get("status", "STALE")

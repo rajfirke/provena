@@ -4,11 +4,16 @@ All notable changes to Provena are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## [Unreleased]
 
 ### Fixed
 
 - CLI commands now report missing or invalid `--config` files without a traceback (#108)
+- **Malformed policy enforcement values** — invalid `enforcement` settings now
+  log a warning and skip only the affected policy entry instead of crashing
+  `PolicyEngine.from_config()` (#109)
+- **`TrailAggregator.summary()`** now includes an `all_signed` field, matching
+  the `signed` field already present on `ContextTrail.summary()` (#110)
 
 ## [1.0.1] - 2026-07-25
 
