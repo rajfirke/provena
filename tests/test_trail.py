@@ -530,6 +530,12 @@ class TestContextTrailExport:
 
 
 class TestContextTrailSigning:
+    def test_empty_signed_trail_summary_includes_signed(self):
+        trail = ContextTrail(backend="memory", signing_key="supersecret")
+        summary = trail.summary()
+        assert summary["total"] == 0
+        assert summary["signed"] is True
+
     def test_signed_trail(self):
         trail = ContextTrail(backend="memory", signing_key="test-secret")
         assert trail.is_signed
