@@ -667,7 +667,13 @@ class ContextTrail:
         records = self._backend.all_records()
         total = len(records)
         if total == 0:
-            return {"total": 0, "provenance": {}, "freshness": {}, "sources": {}}
+            return {
+                "total": 0,
+                "provenance": {},
+                "freshness": {},
+                "sources": {},
+                "signed": self._hasher.is_signed,
+            }
 
         prov_counts: dict[str, int] = {}
         fresh_counts: dict[str, int] = {}

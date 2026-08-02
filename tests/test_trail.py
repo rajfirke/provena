@@ -398,6 +398,14 @@ class TestContextTrailSummary:
     def test_summary_empty(self, memory_trail):
         s = memory_trail.summary()
         assert s["total"] == 0
+        assert s["signed"] is False
+
+    def test_summary_empty_signed_includes_signed_true(self):
+        trail = ContextTrail(backend="memory", signing_key="supersecret")
+        s = trail.summary()
+        assert s["total"] == 0
+        assert s["signed"] is True
+        trail.close()
 
     def test_summary_with_records(self, memory_trail):
         prov = ProvenanceMetadata(
