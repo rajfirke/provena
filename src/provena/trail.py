@@ -605,11 +605,19 @@ class ContextTrail:
             end: Include only records at or before this timestamp.
             provenance_status: Filter by provenance validation status.
             freshness_status: Filter by freshness check status.
-            limit: Maximum number of records to return.
+            limit: Maximum number of records to return. Must be >= 1.
 
         Returns:
             A list of record dictionaries matching the filters.
+
+        Raises:
+            ValueError: If ``limit`` is less than 1. Passing ``limit <= 0``
+                was previously silent and backend-dependent — SQLite treated
+                ``LIMIT -1`` as "no limit" and ``LIMIT 0`` as "no rows", while
+                PostgreSQL rejects a negative ``LIMIT`` outright.
         """
+        if limit < 1:
+            raise ValueError(f"limit must be >= 1, got {limit}")
         source_str = source.value if isinstance(source, ContextSource) else source
         return self._backend.query(
             source=source_str,

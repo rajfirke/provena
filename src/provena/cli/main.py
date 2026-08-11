@@ -10,6 +10,18 @@ import click
 from provena.trail import ContextTrail, _is_pg_url
 
 
+def _positive_int(ctx: click.Context, param: click.Parameter, value: int) -> int:
+    """Reject non-positive --limit values with a clean Click error.
+
+    ``ContextTrail.query`` raises ``ValueError`` for ``limit < 1``; validating
+    here turns that into the standard "Invalid value" message instead of an
+    unhandled traceback.
+    """
+    if value < 1:
+        raise click.BadParameter("must be >= 1")
+    return value
+
+
 @click.group()
 @click.option(
     "--db",
@@ -69,7 +81,14 @@ def _open_trail(ctx: click.Context) -> tuple[ContextTrail, str]:
 
 @cli.command()
 @click.option("--source", "-s", default=None, help="Filter by source type.")
-@click.option("--limit", "-n", default=20, type=int, help="Max records to show.")
+@click.option(
+    "--limit",
+    "-n",
+    default=20,
+    type=int,
+    callback=_positive_int,
+    help="Max records to show (must be >= 1).",
+)
 @click.option(
     "--from",
     "start",

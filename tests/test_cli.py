@@ -117,6 +117,19 @@ class TestCLIAudit:
         finally:
             os.unlink(db_path)
 
+    @pytest.mark.parametrize("bad_limit", ["0", "-1"])
+    def test_audit_rejects_nonpositive_limit(self, bad_limit):
+        db_path = _create_trail_db(3)
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli, ["--db", db_path, "audit", "--limit", bad_limit]
+            )
+            assert result.exit_code != 0
+            assert "Invalid value for '--limit'" in result.output
+        finally:
+            os.unlink(db_path)
+
     def test_audit_from_date(self):
         db_path = _create_trail_db()
         try:

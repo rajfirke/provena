@@ -301,6 +301,25 @@ class TestContextTrailQuery:
         results = memory_trail.query(limit=3)
         assert len(results) == 3
 
+    def test_query_rejects_zero_limit(self, trail):
+        # limit=0 previously returned no records silently (SQLite "LIMIT 0").
+        trail.log("a", source="retriever")
+        with pytest.raises(ValueError, match="limit must be >= 1"):
+            trail.query(limit=0)
+
+    def test_query_rejects_negative_limit(self, trail):
+        # limit=-1 previously returned ALL records silently (SQLite "LIMIT -1"),
+        # while PostgreSQL would raise — this pins one cross-backend behaviour.
+        trail.log("a", source="retriever")
+        with pytest.raises(ValueError, match="limit must be >= 1"):
+            trail.query(limit=-1)
+
+    def test_query_limit_one_is_allowed(self, trail):
+        # The boundary: 1 is the smallest valid limit and must still work.
+        trail.log("a", source="retriever")
+        trail.log("b", source="retriever")
+        assert len(trail.query(limit=1)) == 1
+
     def test_query_by_governance_status(self, memory_trail):
         memory_trail.log("missing", source="retriever")
         memory_trail.log(
