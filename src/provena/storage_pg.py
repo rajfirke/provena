@@ -157,7 +157,8 @@ class PostgreSQLBackend:
                     ),
                 )
                 row = cur.fetchone()
-                assert row is not None
+                if row is None:
+                    raise RuntimeError("INSERT did not return an id")
                 record_id: int = row[0]
             conn.commit()
         return record_id
@@ -185,7 +186,8 @@ class PostgreSQLBackend:
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM trail")
             row = cur.fetchone()
-            assert row is not None
+            if row is None:
+                raise RuntimeError("SELECT COUNT(*) did not return a row")
             return int(row[0])
 
     def all_records(self) -> list[dict[str, Any]]:
@@ -244,7 +246,8 @@ class PostgreSQLBackend:
                     (record_id, note, reviewer, timestamp),
                 )
                 row = cur.fetchone()
-                assert row is not None
+                if row is None:
+                    raise RuntimeError("INSERT did not return an id")
                 ann_id: int = row[0]
             conn.commit()
         return ann_id
