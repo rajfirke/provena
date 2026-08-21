@@ -158,6 +158,10 @@ class TestAggregatedQuery:
         assert len(records) == 2
         assert all(r["_trail"] == "planner" for r in records)
 
+    def test_query_by_unknown_trail_label(self, populated_aggregator):
+        records = populated_aggregator.query(trail_label="nonexistent_agent")
+        assert len(records) == 0
+
     def test_query_by_source(self, populated_aggregator):
         records = populated_aggregator.query(source="tool")
         assert len(records) >= 2

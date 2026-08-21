@@ -222,11 +222,10 @@ class TrailAggregator:
         """
         source_str = source.value if isinstance(source, ContextSource) else source
 
-        targets = (
-            {trail_label: self._trails[trail_label]}
-            if trail_label and trail_label in self._trails
-            else self._trails
-        )
+        if trail_label is not None:
+            targets = {trail_label: self._trails[trail_label]} if trail_label in self._trails else {}
+        else:
+            targets = self._trails
 
         results: list[dict[str, Any]] = []
         per_trail_limit = max(1, limit // max(len(targets), 1))
