@@ -21,6 +21,17 @@ class ContextSource(str, Enum):
     CUSTOM = "custom"
 
 
+def parse_isoformat(dt_str: str) -> datetime:
+    """Parse an ISO 8601 formatted datetime string.
+
+    Handles the 'Z' suffix for UTC which is not supported by datetime.fromisoformat
+    in Python 3.10.
+    """
+    if dt_str.endswith("Z"):
+        dt_str = dt_str[:-1] + "+00:00"
+    return datetime.fromisoformat(dt_str)
+
+
 @dataclass(frozen=True, slots=True)
 class ProvenanceMetadata:
     """Immutable metadata about the origin and authorship of a context input.
@@ -59,7 +70,7 @@ class ProvenanceMetadata:
         """Reconstruct a ProvenanceMetadata instance from a dictionary."""
         created_at = data.get("created_at")
         if isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at)
+            created_at = parse_isoformat(created_at)
         return cls(
             source_url=data.get("source_url"),
             author=data.get("author"),

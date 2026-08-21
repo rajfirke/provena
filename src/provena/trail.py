@@ -24,6 +24,7 @@ from provena.models import (
     ContextSource,
     ProvenanceMetadata,
     TrailRecord,
+    parse_isoformat,
 )
 from provena.policy import (
     EnforcementLevel,
@@ -538,7 +539,7 @@ class ContextTrail:
             )
             if isinstance(created_at, str):
                 try:
-                    created_at = datetime.fromisoformat(created_at)
+                    created_at = parse_isoformat(created_at)
                 except ValueError:
                     created_at = None
             elif not isinstance(created_at, datetime):

@@ -73,6 +73,18 @@ class TestProvenanceMetadata:
         d = pm.to_dict()
         assert d == {}
 
+    def test_from_dict_isoformat_with_z(self):
+        # Parameterized over different common ISO formats
+        variants = [
+            "2024-01-15T10:00:00Z",
+            "2024-01-15T10:00:00+00:00",
+        ]
+        for v in variants:
+            d = {"created_at": v}
+            pm = ProvenanceMetadata.from_dict(d)
+            assert pm.created_at is not None
+            assert pm.created_at.isoformat() == "2024-01-15T10:00:00+00:00"
+
     def test_frozen(self):
         pm = ProvenanceMetadata(source_url="https://example.com")
         import pytest

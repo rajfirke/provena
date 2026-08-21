@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from provena.models import ContextSource, ProvenanceMetadata
+from provena.models import ContextSource, ProvenanceMetadata, parse_isoformat
 
 if TYPE_CHECKING:
     from provena.trail import ContextTrail
@@ -94,7 +94,7 @@ def _parse_datetime(value: Any) -> datetime | None:
         return value
     if isinstance(value, str):
         try:
-            return datetime.fromisoformat(value)
+            return parse_isoformat(value)
         except ValueError:
             return None
     return None
