@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from click.testing import CliRunner
 
 from provena import ContextTrail
@@ -89,6 +90,37 @@ class TestMigrateSQLiteToSQLite:
         )
         assert result.exit_code == 0
         assert "20 records" in result.output
+
+    @pytest.mark.parametrize("bad_batch_size", ["0", "-1"])
+    def test_migrate_rejects_nonpositive_batch_size(self, tmp_path, bad_batch_size):
+        # batch_size=0 previously crashed with a raw "range() arg 3 must not be
+        # zero" traceback. batch_size=-1 was worse: range(0, total, -1) is empty,
+        # so nothing was written, and the empty destination verified as "intact"
+        # — the command reported PASS using the *source* record count.
+        src_path = str(tmp_path / "source.db")
+        dst_path = str(tmp_path / "dest.db")
+
+        trail = ContextTrail(storage_path=src_path)
+        for i in range(5):
+            trail.log(f"record {i}", source="retriever")
+        trail.close()
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "migrate",
+                "--from",
+                src_path,
+                "--to",
+                dst_path,
+                "--batch-size",
+                bad_batch_size,
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Invalid value for '--batch-size'" in result.output
+        assert "PASS" not in result.output
 
     def test_migrate_copies_annotations(self, tmp_path):
         src_path = str(tmp_path / "source.db")

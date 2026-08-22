@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   `PolicyEngine.from_config()` (#109)
 - **`TrailAggregator.summary()`** now includes an `all_signed` field, matching
   the `signed` field already present on `ContextTrail.summary()` (#110)
+- **`migrate --batch-size` validation** — non-positive batch sizes now fail with
+  a clear CLI error instead of crashing (`0`) or silently migrating zero records
+  while reporting `PASS` (`-1`) (#106)
 
 ## [1.0.1] - 2026-07-25
 

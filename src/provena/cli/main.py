@@ -11,11 +11,13 @@ from provena.trail import ContextTrail, _is_pg_url
 
 
 def _positive_int(ctx: click.Context, param: click.Parameter, value: int) -> int:
-    """Reject non-positive --limit values with a clean Click error.
+    """Reject non-positive integer option values with a clean Click error.
 
-    ``ContextTrail.query`` raises ``ValueError`` for ``limit < 1``; validating
-    here turns that into the standard "Invalid value" message instead of an
-    unhandled traceback.
+    Used by ``--limit`` and ``--batch-size``. ``ContextTrail.query`` raises
+    ``ValueError`` for ``limit < 1``, and a non-positive ``batch_size`` makes
+    ``migrate`` either crash or silently copy nothing; validating here turns
+    both into the standard "Invalid value" message instead of an unhandled
+    traceback.
     """
     if value < 1:
         raise click.BadParameter("must be >= 1")
@@ -367,7 +369,8 @@ def serve(ctx: click.Context, db: str | None, transport: str) -> None:
     "--batch-size",
     default=500,
     type=int,
-    help="Number of records per batch.",
+    callback=_positive_int,
+    help="Number of records per batch (must be >= 1).",
 )
 @click.pass_context
 def migrate(
