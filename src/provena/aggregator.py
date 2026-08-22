@@ -223,7 +223,11 @@ class TrailAggregator:
         source_str = source.value if isinstance(source, ContextSource) else source
 
         if trail_label is not None:
-            targets = {trail_label: self._trails[trail_label]} if trail_label in self._trails else {}
+            targets = (
+                {trail_label: self._trails[trail_label]}
+                if trail_label in self._trails
+                else {}
+            )
         else:
             targets = self._trails
 
