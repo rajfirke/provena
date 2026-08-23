@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from provena.models import ContextSource, ProvenanceMetadata
+from provena.policy import freshness_check
 from provena.trail import ContextTrail
 
 
@@ -762,6 +763,63 @@ class TestRecordCountAndLastRecord:
         last = memory_trail.last_record
         assert last is not None
         assert last["source"] == "tool"
+
+
+class TestContextTrailConfigHash:
+    def test_config_hash_is_recorded(self, memory_trail):
+        # config_hash was documented, stored, and plumbed through to_dict(),
+        # but never computed — every record was written with "".
+        record = memory_trail.log("data", source="retriever")
+        stored = memory_trail.query()[0]
+
+        assert record.config_hash != ""
+        assert stored["config_hash"] == record.config_hash
+
+    @pytest.mark.parametrize(
+        "governance_change",
+        [
+            {"max_age_days": 30},
+            {"required_fields": ["source_url"]},
+            {"temporal_detection": False},
+            {"policies": [freshness_check(status="STALE")]},
+        ],
+    )
+    def test_config_hash_changes_with_governance_config(self, governance_change):
+        # The whole point of the field: a reviewer can tell that governance
+        # settings changed partway through a trail.
+        baseline = ContextTrail(backend="memory")
+        changed = ContextTrail(backend="memory", **governance_change)
+
+        assert changed._config_hash != baseline._config_hash
+
+    def test_config_hash_is_stable_across_instances(self):
+        # A hash that varies run to run would be useless for comparison, so
+        # policies are sorted and only their stable identity is included —
+        # never the Policy.check callable, whose repr embeds a memory address.
+        first = ContextTrail(backend="memory", max_age_days=30)
+        second = ContextTrail(backend="memory", max_age_days=30)
+
+        assert first._config_hash == second._config_hash
+
+    def test_config_hash_matches_across_config_paths(self):
+        # ContextTrail has two config paths — kwargs and config=. Equivalent
+        # settings must hash identically, or the field would appear to change
+        # merely because a trail was constructed differently.
+        from_kwargs = ContextTrail(
+            backend="memory",
+            required_fields=["source_url", "created_at"],
+            max_age_days=30,
+            temporal_detection=False,
+        )
+        from_config = ContextTrail(
+            config={
+                "storage": {"backend": "memory"},
+                "provenance": {"required_fields": ["source_url", "created_at"]},
+                "freshness": {"max_age_days": 30, "temporal_detection": False},
+            }
+        )
+
+        assert from_kwargs._config_hash == from_config._config_hash
 
 
 class TestDisabledMode:

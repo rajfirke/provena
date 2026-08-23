@@ -17,6 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **`migrate --batch-size` validation** — non-positive batch sizes now fail with
   a clear CLI error instead of crashing (`0`) or silently migrating zero records
   while reporting `PASS` (`-1`) (#106)
+- **`TrailRecord.config_hash` never populated** — `ContextTrail` now computes a
+  stable hash of its governance configuration (required fields, freshness
+  settings, active policies) and records it on every entry, so a reviewer can
+  tell whether governance settings changed mid-trail. Existing chains are
+  unaffected — `config_hash` is not part of the hash chain (#103)
 
 ## [1.0.1] - 2026-07-25
 
