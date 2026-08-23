@@ -151,7 +151,10 @@ class ContextEntry:
     truncated: bool = False
 
     def __repr__(self) -> str:
-        return f"ContextEntry(source={self.source!r}, hash={self.content_hash[:8]}..., truncated={self.truncated})"
+        return (
+            f"ContextEntry(source={self.source.value}, "
+            f"hash={self.content_hash[:8]}..., truncated={self.truncated})"
+        )
 
     @classmethod
     def create(
@@ -234,7 +237,9 @@ class TrailRecord:
 
     def __repr__(self) -> str:
         source = self.entry.source.value
-        provenance = self.provenance_result.status if self.provenance_result else "UNCHECKED"
+        provenance = (
+            self.provenance_result.status if self.provenance_result else "UNCHECKED"
+        )
         return f"TrailRecord(id={self.id}, source={source}, provenance={provenance})"
 
     def to_dict(self) -> dict[str, Any]:
