@@ -27,6 +27,12 @@ class HandoffEdge:
     to_record_id: int
     run_id: str = ""
 
+    def __repr__(self) -> str:
+        return (
+            f"HandoffEdge({self.from_trail}#{self.from_record_id} "
+            f"-> {self.to_trail}#{self.to_record_id})"
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class TrailVerdict:

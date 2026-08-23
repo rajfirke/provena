@@ -50,6 +50,11 @@ class ProvenanceMetadata:
     version: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
+    def __repr__(self) -> str:
+        url = self.source_url or "unknown"
+        created = self.created_at.date().isoformat() if self.created_at else "unknown"
+        return f"ProvenanceMetadata(url={url}, created_at={created})"
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize non-None fields to a plain dictionary."""
         d: dict[str, Any] = {}
@@ -145,6 +150,9 @@ class ContextEntry:
     content_type: str = "str"
     truncated: bool = False
 
+    def __repr__(self) -> str:
+        return f"ContextEntry(source={self.source!r}, hash={self.content_hash[:8]}..., truncated={self.truncated})"
+
     @classmethod
     def create(
         cls,
@@ -223,6 +231,11 @@ class TrailRecord:
     chain_hash: str
     previous_hash: str
     config_hash: str = ""
+
+    def __repr__(self) -> str:
+        source = self.entry.source.value
+        provenance = self.provenance_result.status if self.provenance_result else "UNCHECKED"
+        return f"TrailRecord(id={self.id}, source={source}, provenance={provenance})"
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize this record to a plain dictionary."""

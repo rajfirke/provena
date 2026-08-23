@@ -29,6 +29,9 @@ class RetentionResult:
     archive_path: str | None = None
     details: str = ""
 
+    def __repr__(self) -> str:
+        return f"RetentionResult(archived={self.archived}, deleted={self.deleted})"
+
 
 class RetentionEngine:
     """Manages record lifecycle with configurable retention policies.
