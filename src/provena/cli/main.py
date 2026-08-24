@@ -561,3 +561,26 @@ def _format_text_report(data: dict[str, Any]) -> str:
 
     lines.append("=" * 50)
     return "\n".join(lines)
+
+
+@cli.command()
+@click.pass_context
+def stats(ctx: click.Context) -> None:
+    """Print a one-line governance status summary."""
+    trail, _ = _open_trail(ctx)
+    try:
+        summary = trail.summary()
+        verdict = trail.verify_chain()
+        prov = " ".join(
+            f"{k}: {val}" for k, val in sorted(summary.get("provenance", {}).items())
+        )
+        fresh = " ".join(
+            f"{k}: {val}" for k, val in sorted(summary.get("freshness", {}).items())
+        )
+        chain = "INTACT" if verdict.intact else f"BROKEN@{verdict.broken_at}"
+        signed = "yes" if summary.get("signed") else "no"
+        click.echo(
+            f"{summary['total']} records | {prov} | {fresh} | chain: {chain} | signed: {signed}"
+        )
+    finally:
+        trail.close()

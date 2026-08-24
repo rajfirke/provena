@@ -571,3 +571,53 @@ class TestCLIHelp:
         assert result.exit_code == 0
         assert "--source" in result.output
         assert "--format" in result.output
+
+
+class TestCLIStats:
+    def test_stats_basic_output(self):
+        db_path = _create_trail_db(5)
+        try:
+            runner = CliRunner()
+            result = runner.invoke(cli, ["--db", db_path, "stats"])
+            assert result.exit_code == 0
+            assert "5 records" in result.output
+            assert "chain: INTACT" in result.output
+            assert "signed: no" in result.output
+        finally:
+            os.unlink(db_path)
+
+    def test_stats_with_governance(self):
+        db_path = _create_trail_db(0)
+        trail = ContextTrail(storage_path=db_path)
+        trail.log(
+            "governed",
+            source="retriever",
+            provenance=ProvenanceMetadata(
+                source_url="https://example.com",
+                created_at=datetime.now(timezone.utc),
+            ),
+        )
+        trail.close()
+
+        try:
+            runner = CliRunner()
+            result = runner.invoke(cli, ["--db", db_path, "stats"])
+            assert result.exit_code == 0
+            assert "1 records" in result.output
+            assert "VALID: 1" in result.output
+            assert "FRESH: 1" in result.output
+            assert "chain: INTACT" in result.output
+        finally:
+            os.unlink(db_path)
+
+    def test_stats_one_line_format(self):
+        # Verify it's truly one-line output for CI/monitoring use
+        db_path = _create_trail_db(3)
+        try:
+            runner = CliRunner()
+            result = runner.invoke(cli, ["--db", db_path, "stats"])
+            assert result.exit_code == 0
+            lines = [line for line in result.output.strip().split("\n") if line]
+            assert len(lines) == 1
+        finally:
+            os.unlink(db_path)
