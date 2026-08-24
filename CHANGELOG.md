@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   already on `provena audit`, so a multi-source pipeline can be inspected one
   source at a time. Counts are paged rather than taken from a single
   `query()` call, so they stay accurate past the default 100-row cap (#75)
+- **`provena stats` command** — prints a one-line governance status summary for
+  CI/CD pipelines and shell scripts, showing record count, provenance/freshness
+  breakdowns, chain integrity, and signing status in a parseable format (#76)
 
 ## [1.1.0] - 2026-08-23
 
