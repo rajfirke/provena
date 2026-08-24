@@ -532,6 +532,80 @@ class TestCLISummary:
         result = runner.invoke(cli, ["--db", "/nonexistent/path.db", "summary"])
         assert result.exit_code != 0
 
+    def _mixed_source_db(self, retriever: int = 3, tool: int = 2) -> str:
+        db_path = _create_trail_db(0)
+        trail = ContextTrail(storage_path=db_path)
+        for i in range(retriever):
+            trail.log(f"ret {i}", source="retriever")
+        for i in range(tool):
+            trail.log(f"tool {i}", source="tool:api")
+        trail.close()
+        return db_path
+
+    def test_summary_filter_by_source(self):
+        db_path = self._mixed_source_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli, ["--db", db_path, "summary", "--source", "retriever"]
+            )
+            assert result.exit_code == 0
+            assert "Records:    3" in result.output
+            assert "retriever" in result.output
+            assert "tool" not in result.output
+        finally:
+            os.unlink(db_path)
+
+    def test_summary_filter_by_source_short_flag(self):
+        db_path = self._mixed_source_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(cli, ["--db", db_path, "summary", "-s", "tool"])
+            assert result.exit_code == 0
+            assert "Records:    2" in result.output
+            assert "retriever" not in result.output
+        finally:
+            os.unlink(db_path)
+
+    def test_summary_without_source_is_unchanged(self):
+        db_path = self._mixed_source_db()
+        try:
+            runner = CliRunner()
+            unfiltered = runner.invoke(cli, ["--db", db_path, "summary"])
+            assert unfiltered.exit_code == 0
+            assert "Records:    5" in unfiltered.output
+            assert "retriever" in unfiltered.output
+            assert "tool" in unfiltered.output
+        finally:
+            os.unlink(db_path)
+
+    def test_summary_filter_counts_beyond_one_query_page(self):
+        # trail.query() caps at 100 rows by default, so a naive implementation
+        # would report 100 here instead of 150. The filtered path pages.
+        db_path = self._mixed_source_db(retriever=150, tool=20)
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli, ["--db", db_path, "summary", "--source", "retriever"]
+            )
+            assert result.exit_code == 0
+            assert "Records:    150" in result.output
+            assert "MISSING      150" in result.output
+        finally:
+            os.unlink(db_path)
+
+    def test_summary_filter_unknown_source_is_empty(self):
+        db_path = self._mixed_source_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli, ["--db", db_path, "summary", "--source", "nope"]
+            )
+            assert result.exit_code == 0
+            assert "Records:    0" in result.output
+        finally:
+            os.unlink(db_path)
+
 
 class TestCLIVersion:
     def test_version(self):

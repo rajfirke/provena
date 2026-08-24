@@ -299,12 +299,13 @@ def retain(
 
 
 @cli.command()
+@click.option("--source", "-s", default=None, help="Filter by source type.")
 @click.pass_context
-def summary(ctx: click.Context) -> None:
+def summary(ctx: click.Context, source: str | None) -> None:
     """Show a quick summary of the audit trail."""
     trail, _ = _open_trail(ctx)
     try:
-        s = trail.summary()
+        s = _summarize_source(trail, source) if source else trail.summary()
         h = trail.health()
 
         click.echo(f"Records:    {s['total']}")
@@ -450,6 +451,54 @@ def migrate(
     finally:
         src.close()
         dst.close()
+
+
+def _summarize_source(trail: ContextTrail, source: str) -> dict[str, Any]:
+    """Build a ``trail.summary()``-shaped dict for a single source.
+
+    ``ContextTrail.summary()`` aggregates the whole trail and takes no source
+    filter, so the records are pulled through ``query()`` instead. That call
+    caps at 100 rows by default, so it is paged the same way
+    ``TrailAggregator.detect_gaps()`` pages — otherwise the counts would stop
+    at the first page and silently under-report.
+
+    Args:
+        trail: The open trail to summarize.
+        source: Source type to restrict the summary to.
+
+    Returns:
+        A dict with the same keys as ``ContextTrail.summary()``.
+    """
+    prov_counts: dict[str, int] = {}
+    fresh_counts: dict[str, int] = {}
+    source_counts: dict[str, int] = {}
+    total = 0
+
+    offset = 0
+    batch_size = 1000
+    while True:
+        records = trail.query(source=source, limit=batch_size, offset=offset)
+        if not records:
+            break
+        for r in records:
+            total += 1
+            status = r.get("provenance_status", "MISSING")
+            prov_counts[status] = prov_counts.get(status, 0) + 1
+            fstatus = r.get("freshness_status", "UNKNOWN")
+            fresh_counts[fstatus] = fresh_counts.get(fstatus, 0) + 1
+            src = r.get("source", "unknown")
+            source_counts[src] = source_counts.get(src, 0) + 1
+        if len(records) < batch_size:
+            break
+        offset += len(records)
+
+    return {
+        "total": total,
+        "provenance": prov_counts,
+        "freshness": fresh_counts,
+        "sources": source_counts,
+        "signed": trail.is_signed,
+    }
 
 
 def _open_backend(path: str) -> Any:

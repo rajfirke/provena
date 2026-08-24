@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   filters**, exposing the `trail.query()` filters that were already supported
   by the API. Values are case-insensitive, and an unrecognized status is
   rejected with a clear error rather than quietly matching no records (#85)
+- **`provena summary` gains a `--source/-s` filter**, matching the option
+  already on `provena audit`, so a multi-source pipeline can be inspected one
+  source at a time. Counts are paged rather than taken from a single
+  `query()` call, so they stay accurate past the default 100-row cap (#75)
 
 ## [1.1.0] - 2026-08-23
 
