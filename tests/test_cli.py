@@ -6,11 +6,13 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 
 import pytest
 from click.testing import CliRunner
 
 from provena.cli.main import cli
+from provena.models import ProvenanceMetadata
 from provena.trail import ContextTrail
 
 
@@ -127,6 +129,149 @@ class TestCLIAudit:
             )
             assert result.exit_code != 0
             assert "Invalid value for '--limit'" in result.output
+        finally:
+            os.unlink(db_path)
+
+    def _governance_db(self) -> str:
+        """Trail with one record per provenance status.
+
+        No provenance -> MISSING, source_url only -> INCOMPLETE, and both
+        required fields -> VALID. None of the three carry a usable timestamp
+        except the VALID one, which is created now and so reads as FRESH.
+        """
+        db_path = _create_trail_db(0)
+        trail = ContextTrail(storage_path=db_path)
+        trail.log("ungoverned", source="retriever")
+        trail.log(
+            "partial",
+            source="retriever",
+            provenance=ProvenanceMetadata(source_url="https://example.com/a"),
+        )
+        trail.log(
+            "governed",
+            source="retriever",
+            provenance=ProvenanceMetadata(
+                source_url="https://example.com/b",
+                created_at=datetime.now(timezone.utc),
+            ),
+        )
+        trail.close()
+        return db_path
+
+    def test_audit_filter_by_provenance_status(self):
+        db_path = self._governance_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "--db",
+                    db_path,
+                    "audit",
+                    "--provenance-status",
+                    "MISSING",
+                    "--format",
+                    "json",
+                ],
+            )
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert len(data) == 1
+            assert data[0]["provenance_status"] == "MISSING"
+        finally:
+            os.unlink(db_path)
+
+    def test_audit_filter_by_freshness_status(self):
+        db_path = self._governance_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "--db",
+                    db_path,
+                    "audit",
+                    "--freshness-status",
+                    "FRESH",
+                    "--format",
+                    "json",
+                ],
+            )
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert len(data) == 1
+            assert data[0]["freshness_status"] == "FRESH"
+        finally:
+            os.unlink(db_path)
+
+    def test_audit_status_filters_are_case_insensitive(self):
+        # Stored statuses are uppercase and the backend matches exactly, so a
+        # lowercase value would silently return nothing without normalization.
+        db_path = self._governance_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "--db",
+                    db_path,
+                    "audit",
+                    "--provenance-status",
+                    "missing",
+                    "--format",
+                    "json",
+                ],
+            )
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert len(data) == 1
+            assert data[0]["provenance_status"] == "MISSING"
+        finally:
+            os.unlink(db_path)
+
+    def test_audit_combines_status_filters(self):
+        db_path = self._governance_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "--db",
+                    db_path,
+                    "audit",
+                    "--provenance-status",
+                    "VALID",
+                    "--freshness-status",
+                    "FRESH",
+                    "--format",
+                    "json",
+                ],
+            )
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert len(data) == 1
+            assert data[0]["provenance_status"] == "VALID"
+            assert data[0]["freshness_status"] == "FRESH"
+        finally:
+            os.unlink(db_path)
+
+    @pytest.mark.parametrize(
+        ("option", "bad_value"),
+        [
+            ("--provenance-status", "MISSNG"),
+            ("--freshness-status", "STALLE"),
+        ],
+    )
+    def test_audit_rejects_unknown_status(self, option, bad_value):
+        # A typo must not look like a clean audit: without validation the
+        # backend matches nothing and the CLI prints "No records found."
+        db_path = self._governance_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(cli, ["--db", db_path, "audit", option, bad_value])
+            assert result.exit_code != 0
+            assert f"Invalid value for '{option}'" in result.output
+            assert "No records found" not in result.output
         finally:
             os.unlink(db_path)
 

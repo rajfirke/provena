@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **`provena audit` gains `--provenance-status` and `--freshness-status`
+  filters**, exposing the `trail.query()` filters that were already supported
+  by the API. Values are case-insensitive, and an unrecognized status is
+  rejected with a clear error rather than quietly matching no records (#85)
+
 ## [1.1.0] - 2026-08-23
 
 ### Added

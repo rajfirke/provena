@@ -84,6 +84,18 @@ def _open_trail(ctx: click.Context) -> tuple[ContextTrail, str]:
 @cli.command()
 @click.option("--source", "-s", default=None, help="Filter by source type.")
 @click.option(
+    "--provenance-status",
+    default=None,
+    type=click.Choice(["VALID", "MISSING", "INCOMPLETE"], case_sensitive=False),
+    help="Filter by provenance validation status.",
+)
+@click.option(
+    "--freshness-status",
+    default=None,
+    type=click.Choice(["FRESH", "STALE", "UNKNOWN"], case_sensitive=False),
+    help="Filter by freshness check status.",
+)
+@click.option(
     "--limit",
     "-n",
     default=20,
@@ -116,6 +128,8 @@ def _open_trail(ctx: click.Context) -> tuple[ContextTrail, str]:
 def audit(
     ctx: click.Context,
     source: str | None,
+    provenance_status: str | None,
+    freshness_status: str | None,
     limit: int,
     start: datetime | None,
     end: datetime | None,
@@ -124,7 +138,14 @@ def audit(
     """Query the context governance audit log."""
     trail, _ = _open_trail(ctx)
     try:
-        records = trail.query(source=source, limit=limit, start=start, end=end)
+        records = trail.query(
+            source=source,
+            provenance_status=provenance_status,
+            freshness_status=freshness_status,
+            limit=limit,
+            start=start,
+            end=end,
+        )
 
         if not records:
             click.echo("No records found.")
