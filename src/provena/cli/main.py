@@ -250,6 +250,29 @@ def report(ctx: click.Context, fmt: str, output: str | None) -> None:
     finally:
         trail.close()
 
+@cli.command()
+@click.option(
+    "--format",
+    "fmt",
+    default="json",
+    type=click.Choice(["json", "csv", "json_with_annotations"]),
+    help="Export format.",
+)
+@click.option("--output", "-o", default=None, type=click.Path(), help="Write to file instead of stdout.")
+@click.pass_context
+def export(ctx: click.Context, fmt: str, output: str | None) -> None:
+    """Export raw audit trail records."""
+    trail, _ = _open_trail(ctx)
+    try:
+        content = trail.export(format=fmt)
+        if output:
+            with open(output, "w") as file:
+                file.write(content)
+            click.echo(f"Exported to {output}")
+        else:
+            click.echo(content)
+    finally:
+        trail.close()
 
 @cli.command()
 @click.option(
@@ -633,3 +656,4 @@ def stats(ctx: click.Context) -> None:
         )
     finally:
         trail.close()
+

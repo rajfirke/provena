@@ -501,6 +501,52 @@ class TestCLIReport:
         result = runner.invoke(cli, ["--db", "/nonexistent/path.db", "report"])
         assert result.exit_code != 0
 
+class TestCLIExport:
+    def test_export_json(self):
+        db_path = _create_trail_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(cli, ["--db", db_path, "export"])
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert isinstance(data, list)
+            assert len(data) == 3
+        finally:
+            os.unlink(db_path)
+
+    def test_export_csv(self):
+        db_path = _create_trail_db()
+        try:
+            runner = CliRunner()
+            result = runner.invoke(cli, ["--db", db_path, "export", "--format", "csv"])
+            assert result.exit_code == 0
+            assert "id,timestamp,source,source_name,content_hash" in result.output
+            assert "src_0" in result.output
+        finally:
+            os.unlink(db_path)
+
+    def test_export_to_file(self):
+        db_path = _create_trail_db()
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            out_path = f.name
+        try:
+            runner = CliRunner()
+            result = runner.invoke(cli, ["--db", db_path, "export", "--output", out_path])
+            assert result.exit_code == 0
+            assert "Exported to" in result.output
+
+            with open(out_path) as f:
+                data = json.loads(f.read())
+            assert isinstance(data, list)
+            assert len(data) == 3
+        finally:
+            os.unlink(db_path)
+            os.unlink(out_path)
+
+    def test_export_missing_db(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--db", "/nonexistent/path.db", "export"])
+        assert result.exit_code != 0
 
 class TestCLISummary:
     def test_summary(self):
