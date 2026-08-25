@@ -72,6 +72,21 @@ print(summary["provenance"])
 # {'MISSING': 1, 'INCOMPLETE': 1, 'VALID': 1}
 ```
 
+!!! note "VALID means present, not verified"
+    A `VALID` verdict only confirms that the required fields are present and
+    non-empty. It doesn't fetch `source_url` or check `created_at` against
+    when the entry was actually logged, so a plausible but fabricated value
+    passes just as well as a real one. This is deliberate: Provena is an
+    audit trail, and it records what was declared, not whether the
+    declaration is true.
+
+    For stricter checks, add a rule to the policy engine's
+    `provenance_check()` hook, for example a domain allowlist or a
+    timestamp-recency check. The hook runs at log time with full access to
+    the record, but a `BLOCK`-level `DENY` fires after the record is
+    persisted and the chain has advanced, so the declaration still ends up
+    in the trail.
+
 ## Default Required Fields
 
 By default, Provena requires two fields for a VALID verdict:
