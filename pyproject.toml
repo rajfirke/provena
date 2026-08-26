@@ -43,7 +43,7 @@ openai-agents = ["openai-agents>=0.1"]
 google-adk = ["google-adk>=1.0"]
 mcp = ["fastmcp>=2.0"]
 pdf = ["fpdf2>=2.7"]
-all = ["provena[yaml,cli,otel]"]
+all = ["provena[yaml,cli,otel,postgres,mcp,pdf]"]
 docs = [
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.25",

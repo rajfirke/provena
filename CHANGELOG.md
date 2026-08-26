@@ -20,6 +20,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   CI/CD pipelines and shell scripts, showing record count, provenance/freshness
   breakdowns, chain integrity, and signing status in a parseable format (#76)
 
+### Fixed
+
+- **`provena[all]` now installs what the README says it does** — the extra
+  resolved to only `yaml,cli,otel`, silently omitting the `postgres`, `mcp` and
+  `pdf` extras the README already documented it as including. Framework
+  adapters remain deliberately excluded (#71)
+
 ## [1.1.0] - 2026-08-23
 
 ### Added
