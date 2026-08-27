@@ -250,6 +250,7 @@ def report(ctx: click.Context, fmt: str, output: str | None) -> None:
     finally:
         trail.close()
 
+
 @cli.command()
 @click.option(
     "--format",
@@ -258,7 +259,13 @@ def report(ctx: click.Context, fmt: str, output: str | None) -> None:
     type=click.Choice(["json", "csv", "json_with_annotations"]),
     help="Export format.",
 )
-@click.option("--output", "-o", default=None, type=click.Path(), help="Write to file instead of stdout.")
+@click.option(
+    "--output",
+    "-o",
+    default=None,
+    type=click.Path(),
+    help="Write to file instead of stdout.",
+)
 @click.pass_context
 def export(ctx: click.Context, fmt: str, output: str | None) -> None:
     """Export raw audit trail records."""
@@ -273,6 +280,7 @@ def export(ctx: click.Context, fmt: str, output: str | None) -> None:
             click.echo(content)
     finally:
         trail.close()
+
 
 @cli.command()
 @click.option(
@@ -656,4 +664,3 @@ def stats(ctx: click.Context) -> None:
         )
     finally:
         trail.close()
-

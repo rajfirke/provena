@@ -501,6 +501,7 @@ class TestCLIReport:
         result = runner.invoke(cli, ["--db", "/nonexistent/path.db", "report"])
         assert result.exit_code != 0
 
+
 class TestCLIExport:
     def test_export_json(self):
         db_path = _create_trail_db()
@@ -531,7 +532,9 @@ class TestCLIExport:
             out_path = f.name
         try:
             runner = CliRunner()
-            result = runner.invoke(cli, ["--db", db_path, "export", "--output", out_path])
+            result = runner.invoke(
+                cli, ["--db", db_path, "export", "--output", out_path]
+            )
             assert result.exit_code == 0
             assert "Exported to" in result.output
 
@@ -547,6 +550,7 @@ class TestCLIExport:
         runner = CliRunner()
         result = runner.invoke(cli, ["--db", "/nonexistent/path.db", "export"])
         assert result.exit_code != 0
+
 
 class TestCLISummary:
     def test_summary(self):
