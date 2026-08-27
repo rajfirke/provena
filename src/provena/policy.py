@@ -133,7 +133,7 @@ class PolicyEngine:
             try:
                 passed = policy.check(record)
             except Exception:
-                _logger.debug(
+                _logger.warning(
                     "Policy '%s' raised during evaluation", policy.name, exc_info=True
                 )
                 passed = False

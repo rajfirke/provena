@@ -165,16 +165,29 @@ class TestPolicyEngine:
         engine = PolicyEngine()
         assert isinstance(engine.policies, tuple)
 
-    def test_check_exception_treated_as_failure(self, memory_trail):
+    def test_check_exception_treated_as_failure(self, memory_trail, caplog):
         def bad_check(r):
             raise RuntimeError("boom")
 
         policy = Policy("bad", bad_check, EnforcementLevel.BLOCK)
         engine = PolicyEngine([policy])
         record = memory_trail.log("test", source="retriever")
-        evaluation = engine.evaluate(record)
+
+        with caplog.at_level("WARNING", logger="provena.policy"):
+            evaluation = engine.evaluate(record)
+
         assert evaluation.decision == "DENY"
         assert not evaluation.results[0].passed
+
+        matching_records = [
+            record
+            for record in caplog.records
+            if "Policy 'bad' raised during evaluation" in record.message
+        ]
+
+        assert len(matching_records) == 1
+        assert "Policy 'bad' raised during evaluation" in caplog.text
+        assert "boom" in caplog.text
 
 
 class TestPolicyEngineFromConfig:
