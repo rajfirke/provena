@@ -124,12 +124,19 @@ def _open_trail(ctx: click.Context) -> tuple[ContextTrail, str]:
     type=click.Choice(["table", "json"]),
     help="Output format.",
 )
+@click.option(
+    "--run-id",
+    "run_id",
+    default=None,
+    help="Filter records by a specific run ID.",
+)
 @click.pass_context
 def audit(
     ctx: click.Context,
     source: str | None,
     provenance_status: str | None,
     freshness_status: str | None,
+    run_id: str | None,
     limit: int,
     start: datetime | None,
     end: datetime | None,
@@ -142,6 +149,7 @@ def audit(
             source=source,
             provenance_status=provenance_status,
             freshness_status=freshness_status,
+            run_id=run_id,
             limit=limit,
             start=start,
             end=end,
@@ -399,10 +407,12 @@ def serve(ctx: click.Context, db: str | None, transport: str) -> None:
     signing_key = ctx.parent.parent.obj.get("signing_key")  # type: ignore[union-attr]
 
     trail = ContextTrail(storage_path=db_path, signing_key=signing_key)
-    configure(trail)
-
-    server = create_server()
-    server.run(transport=transport)
+    try:
+        configure(trail)
+        server = create_server()
+        server.run(transport=transport)
+    finally:
+        trail.close()
 
 
 @cli.command()
