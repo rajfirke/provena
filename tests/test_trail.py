@@ -233,6 +233,103 @@ class TestContextTrailTrack:
         assert doc.page_content == "LangChain document content"
         assert memory_trail.summary()["total"] == 1
 
+    class _Doc:
+        """Minimal stand-in for a LangChain/LlamaIndex Document."""
+
+        def __init__(self, text, metadata=None):
+            self.page_content = text
+            self.metadata = metadata or {}
+
+    def test_track_list_extracts_per_document_provenance(self, memory_trail):
+        # _extract_provenance used to run on the list itself. Lists have no
+        # .metadata, so every document in a retrieved batch was recorded as
+        # MISSING even when each carried its own source.
+        @memory_trail.track(source="retriever")
+        def search(query):
+            now = datetime.now(timezone.utc).isoformat()
+            return [
+                self._Doc("a", {"source": "https://example.com/a", "created_at": now}),
+                self._Doc("b", {"source": "https://example.com/b", "created_at": now}),
+            ]
+
+        search("test")
+        records = memory_trail.query()
+
+        assert len(records) == 2
+        assert [r["provenance_status"] for r in records] == ["VALID", "VALID"]
+        urls = [json.loads(r["provenance_json"])["source_url"] for r in records]
+        assert urls == ["https://example.com/a", "https://example.com/b"]
+
+    def test_track_list_runs_freshness_per_document(self, memory_trail):
+        # The point of per-document provenance: a stale document in a batch
+        # must be flagged, not hidden behind a batch-wide UNKNOWN.
+        fresh = datetime.now(timezone.utc)
+        stale = datetime.now(timezone.utc) - timedelta(days=400)
+
+        @memory_trail.track(source="retriever")
+        def search(query):
+            return [
+                self._Doc(
+                    "recent",
+                    {
+                        "source": "https://example.com/a",
+                        "created_at": fresh.isoformat(),
+                    },
+                ),
+                self._Doc(
+                    "old",
+                    {
+                        "source": "https://example.com/b",
+                        "created_at": stale.isoformat(),
+                    },
+                ),
+            ]
+
+        search("test")
+        records = memory_trail.query()
+
+        assert [r["freshness_status"] for r in records] == ["FRESH", "STALE"]
+
+    def test_track_single_document_provenance_unchanged(self, memory_trail):
+        # A non-sequence result still reads provenance from the result itself.
+        @memory_trail.track(source="retriever")
+        def search(query):
+            return self._Doc(
+                "only",
+                {
+                    "source": "https://example.com/solo",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+
+        search("test")
+        records = memory_trail.query()
+
+        assert len(records) == 1
+        assert records[0]["provenance_status"] == "VALID"
+        prov = json.loads(records[0]["provenance_json"])
+        assert prov["source_url"] == "https://example.com/solo"
+
+    def test_track_reshaping_extractor_does_not_mispair_provenance(self, memory_trail):
+        # An extractor that collapses a batch into one item leaves no way to
+        # map content back to a document, so provenance falls back to the
+        # result as a whole rather than being paired with the wrong document.
+        @memory_trail.track(
+            source="retriever",
+            content_extractor=lambda docs: " ".join(d.page_content for d in docs),
+        )
+        def search(query):
+            return [
+                self._Doc("a", {"source": "https://example.com/a"}),
+                self._Doc("b", {"source": "https://example.com/b"}),
+            ]
+
+        search("test")
+        records = memory_trail.query()
+
+        assert len(records) == 1
+        assert records[0]["provenance_status"] == "MISSING"
+
     def test_track_async_function(self, memory_trail):
         @memory_trail.track(source="retriever", source_name="async_search")
         async def async_search(query):
