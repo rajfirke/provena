@@ -22,6 +22,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **`annotate()` rejects non-positive record IDs with a clear error.** In
+  buffered mode `log()` returns `TrailRecord(id=-1)` until the record is
+  flushed, and passing that placeholder to `annotate()` previously surfaced a
+  raw `sqlite3.IntegrityError` on SQLite, a foreign key violation on
+  PostgreSQL, and a differently worded `ValueError` in memory, none of which
+  mentioned buffering. All backends now raise the same `ValueError` naming the
+  cause and pointing at `flush()` (#143)
 - **`provena mcp serve` now closes the trail on exit** — the server call is wrapped in `try/finally`, so the SQLite handle/WAL is checkpointed and the final buffer flush runs even if `configure()`/`create_server()` raise or `server.run()` returns (#148)
 - **`verify_chain()` returns `ChainVerdict(intact=False)` for a `None`/malformed `chain_hash`** instead of raising `TypeError` out of `hmac.compare_digest`, so corrupted or hand-edited records are reported as broken links rather than crashing the audit path (#146)
 - **`InMemoryBackend.get()` and `get_last()` now hold the backend lock** when reading `_records`, matching every other method on the backend and closing a TOCTOU race that could raise `IndexError` under concurrent `append()` (#145)
