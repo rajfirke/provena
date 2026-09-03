@@ -22,6 +22,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **`annotate()` rejects non-positive record IDs with a clear error.** In
+  buffered mode `log()` returns `TrailRecord(id=-1)` until the record is
+  flushed, and passing that placeholder to `annotate()` previously surfaced a
+  raw `sqlite3.IntegrityError` on SQLite, a foreign key violation on
+  PostgreSQL, and a differently worded `ValueError` in memory, none of which
+  mentioned buffering. All backends now raise the same `ValueError` naming the
+  cause and pointing at `flush()` (#143)
 - **`record_count`, `summary()`, and `export()` now include unflushed buffered records** in buffered mode. Previously all three read only from the backend, so `record_count` was always 0 until the next flush, `summary()` reported stale aggregates, and `export()` silently omitted pending writes. `record_count` and `summary()` now merge `WriteBuffer.pending_records` into the backend snapshot without flushing; `export()` flushes explicitly so the backend view is always complete (#150)
 - **`@trail.track` now extracts provenance per document** when the decorated
   function returns a list. `_extract_provenance` ran on the list itself, which

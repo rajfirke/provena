@@ -462,6 +462,71 @@ class TestContextTrailAnnotate:
         )
         assert ann_id >= 1
 
+    def test_buffered_log_returns_placeholder_id(self):
+        # Buffered records have not reached the backend yet, so log() cannot
+        # know the persisted row id. Pinning the sentinel keeps the annotate()
+        # guard below meaningful.
+        trail = ContextTrail(backend="memory", buffered=True)
+        try:
+            record = trail.log("pending", source="retriever")
+            assert record.id == -1
+        finally:
+            trail.close()
+
+    @pytest.mark.parametrize("bad_id", [-1, 0])
+    def test_annotate_rejects_non_positive_record_id(self, memory_trail, bad_id):
+        memory_trail.log("test", source="retriever")
+        with pytest.raises(ValueError, match="record_id must be >= 1"):
+            memory_trail.annotate(bad_id, "note", reviewer="alice")
+
+    def test_annotate_buffered_sentinel_error_mentions_flush(self):
+        # The old failure was backend-specific and never mentioned buffering:
+        # sqlite3.IntegrityError on SQLite, a different ValueError in memory.
+        # The message must point at the actual cause and the way out.
+        trail = ContextTrail(backend="memory", buffered=True)
+        try:
+            record = trail.log("pending", source="retriever")
+            with pytest.raises(ValueError) as exc:
+                trail.annotate(record.id, "Reviewed by human", reviewer="alice")
+            assert "buffered mode" in str(exc.value)
+            assert "flush()" in str(exc.value)
+        finally:
+            trail.close()
+
+    def test_annotate_sqlite_sentinel_raises_value_error(self):
+        # Previously sqlite3.IntegrityError ("FOREIGN KEY constraint failed")
+        # surfaced raw from the storage layer. All backends now agree.
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+        try:
+            trail = ContextTrail(storage_path=db_path, buffered=True)
+            record = trail.log("pending", source="retriever")
+            with pytest.raises(ValueError, match="record_id must be >= 1"):
+                trail.annotate(record.id, "note", reviewer="alice")
+            trail.close()
+        finally:
+            os.unlink(db_path)
+
+    def test_annotate_works_after_flush(self):
+        # The path the error message tells callers to take must actually work.
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+        try:
+            trail = ContextTrail(storage_path=db_path, buffered=True)
+            trail.log("needs review", source="retriever")
+            trail.flush()
+
+            record_id = trail.last_record["id"]
+            ann_id = trail.annotate(record_id, "Reviewed by human", reviewer="alice")
+
+            assert ann_id >= 1
+            annotations = trail.get_annotations(record_id)
+            assert len(annotations) == 1
+            assert annotations[0]["note"] == "Reviewed by human"
+            trail.close()
+        finally:
+            os.unlink(db_path)
+
 
 class TestContextTrailGetAnnotations:
     def test_empty_initially(self, memory_trail):

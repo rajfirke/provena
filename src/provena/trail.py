@@ -318,6 +318,9 @@ class ContextTrail:
 
         Returns:
             The created TrailRecord, or None if a non-strict error occurred.
+            In buffered mode the record has not reached the backend yet, so
+            its ``id`` is the placeholder ``-1`` rather than a persisted row
+            id. Call ``flush()`` before using it with ``annotate()``.
         """
         try:
             return self._log_internal(
@@ -694,13 +697,26 @@ class ContextTrail:
         """Add a human oversight annotation to a trail record.
 
         Args:
-            record_id: The ID of the record to annotate.
+            record_id: The ID of the record to annotate. Must be >= 1.
             note: The annotation text.
             reviewer: Optional name of the reviewer.
 
         Returns:
             The ID of the created annotation.
+
+        Raises:
+            ValueError: If ``record_id`` is less than 1. In buffered mode
+                ``log()`` returns ``TrailRecord(id=-1)`` until the record
+                reaches the backend, and annotating that placeholder is
+                rejected by every backend with a different low-level error.
         """
+        if record_id < 1:
+            raise ValueError(
+                f"record_id must be >= 1, got {record_id}. In buffered mode "
+                "log() returns TrailRecord(id=-1) until the record is "
+                "flushed; call flush(), then read the persisted id from "
+                "last_record or query()."
+            )
         ts = datetime.now(timezone.utc).isoformat()
         return self._backend.add_annotation(record_id, note, reviewer, ts)
 
