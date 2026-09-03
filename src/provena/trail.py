@@ -658,7 +658,6 @@ class ContextTrail:
             details="Chain intact",
         )
 
-    # Added offset parameter to truly handle datasets of any size without hard caps
     def query(
         self,
         *,
@@ -715,8 +714,9 @@ class ContextTrail:
 
     @property
     def record_count(self) -> int:
-        """Total number of records in the audit trail."""
-        return self._backend.count()
+        """Total number of records in the audit trail, including unflushed buffered records."""
+        buffered_len = self._buffer.pending if self._buffer else 0
+        return self._backend.count() + buffered_len
 
     @property
     def last_record(self) -> dict[str, Any] | None:
@@ -731,6 +731,8 @@ class ContextTrail:
             breakdowns, and signing status.
         """
         records = self._backend.all_records()
+        if self._buffer:
+            records = records + self._buffer.pending_records
         total = len(records)
         if total == 0:
             return {
@@ -769,6 +771,8 @@ class ContextTrail:
         Returns:
             The serialized trail data as a string.
         """
+        if self._buffer:
+            self._buffer.flush()
         records = self._backend.all_records()
 
         if format == "json_with_annotations":

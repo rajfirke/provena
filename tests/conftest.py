@@ -44,3 +44,12 @@ def trail(tmp_path: object) -> Generator[ContextTrail, None, None]:
 @pytest.fixture
 def memory_trail() -> ContextTrail:
     return ContextTrail(backend="memory")
+
+
+@pytest.fixture
+def trail_with_buffer() -> Generator[ContextTrail, None, None]:
+    buffered_trail = ContextTrail(
+        backend="memory", buffered=True, buffer_size=100, flush_interval=60
+    )
+    yield buffered_trail
+    buffered_trail.close()

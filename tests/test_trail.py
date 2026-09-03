@@ -946,3 +946,19 @@ class TestDisabledMode:
             t.close()
         finally:
             trail_module._DISABLED = original
+
+
+class TestContextTrailBufferedReads:
+    def test_record_count_with_unflushed_buffer(self, trail_with_buffer):
+        trail_with_buffer.log("buffered entry", source="retriever")
+        assert trail_with_buffer.record_count == trail_with_buffer._backend.count() + 1
+
+    def test_summary_with_unflushed_buffer(self, trail_with_buffer):
+        trail_with_buffer.log("buffered entry", source="retriever")
+        s = trail_with_buffer.summary()
+        assert s["total"] == trail_with_buffer._backend.count() + 1
+
+    def test_export_flushes_unflushed_buffer(self, trail_with_buffer):
+        trail_with_buffer.log("buffered entry", source="retriever")
+        trail_with_buffer.export(format="json")
+        assert len(trail_with_buffer._buffer) == 0
