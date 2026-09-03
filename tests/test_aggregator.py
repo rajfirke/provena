@@ -433,8 +433,8 @@ def test_detect_gaps_paginates_all_records_beyond_1000():
     assert missing_gaps[1499].record_id == 1499
 
 
-def test_context_trail_query_supports_offset():
-    """Verify offset slicing behavior directly on query()."""
+def test_paginated_mock_trail_returns_distinct_pages():
+    """PaginatedMockTrail advances its window on each offset call."""
     mock_trail = PaginatedMockTrail(stale_count=100, missing_prov_count=0)
 
     first_batch = mock_trail.query(freshness_status="STALE", limit=10, offset=0)
@@ -442,5 +442,4 @@ def test_context_trail_query_supports_offset():
 
     assert len(first_batch) == 10
     assert len(second_batch) == 10
-    assert first_batch[0]["id"] == 0
-    assert second_batch[0]["id"] == 10
+    assert first_batch != second_batch

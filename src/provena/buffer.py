@@ -57,6 +57,15 @@ class WriteBuffer:
         """Number of records waiting to be flushed."""
         return len(self._buffer)
 
+    def __len__(self) -> int:
+        return self.pending
+
+    @property
+    def pending_records(self) -> list[dict[str, Any]]:
+        """Snapshot of records waiting to be flushed."""
+        with self._lock:
+            return list(self._buffer)
+
     def append(self, record: dict[str, Any]) -> None:
         """Append a record to the buffer. Triggers flush if buffer is full."""
         with self._lock:

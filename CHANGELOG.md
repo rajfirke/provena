@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **`record_count`, `summary()`, and `export()` now include unflushed buffered records** in buffered mode. Previously all three read only from the backend, so `record_count` was always 0 until the next flush, `summary()` reported stale aggregates, and `export()` silently omitted pending writes. `record_count` and `summary()` now merge `WriteBuffer.pending_records` into the backend snapshot without flushing; `export()` flushes explicitly so the backend view is always complete (#150)
 - **`@trail.track` now extracts provenance per document** when the decorated
   function returns a list. `_extract_provenance` ran on the list itself, which
   has no `.metadata`, so every document in a retrieved batch was recorded with
