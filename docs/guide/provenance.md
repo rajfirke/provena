@@ -2,8 +2,9 @@
 
 Provenance metadata records where a piece of context came from -- its origin
 URL, author, creation date, and version. Provena validates this metadata on
-every logged entry and assigns a verdict that tells you whether the context has
-a trustworthy lineage.
+every logged entry and assigns a verdict that tells you whether the declared
+lineage is **complete**. Completeness is not the same as truthfulness: see
+[VALID means present, not verified](#validation-verdicts) below.
 
 ## ProvenanceMetadata
 
@@ -86,6 +87,11 @@ print(summary["provenance"])
     the record, but a `BLOCK`-level `DENY` fires after the record is
     persisted and the chain has advanced, so the declaration still ends up
     in the trail.
+
+    There is no fourth verdict for *present but uncorroborated*, because from
+    the validator's position every `VALID` entry is uncorroborated. Read a
+    `VALID` count as "the callers declared an origin this often", never as
+    "the origins were confirmed this often".
 
 ## Default Required Fields
 
