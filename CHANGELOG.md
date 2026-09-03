@@ -22,6 +22,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **`@trail.track` now extracts provenance per document** when the decorated
+  function returns a list. `_extract_provenance` ran on the list itself, which
+  has no `.metadata`, so every document in a retrieved batch was recorded with
+  `provenance_status=MISSING` and no freshness check, even when each document
+  carried its own `source` and `created_at`. A batch containing a stale
+  document now flags it `STALE` instead of hiding it behind a batch-wide
+  `UNKNOWN` (#149)
 - **`provena mcp serve` now closes the trail on exit** — the server call is wrapped in `try/finally`, so the SQLite handle/WAL is checkpointed and the final buffer flush runs even if `configure()`/`create_server()` raise or `server.run()` returns (#148)
 - **`verify_chain()` returns `ChainVerdict(intact=False)` for a `None`/malformed `chain_hash`** instead of raising `TypeError` out of `hmac.compare_digest`, so corrupted or hand-edited records are reported as broken links rather than crashing the audit path (#146)
 - **`InMemoryBackend.get()` and `get_last()` now hold the backend lock** when reading `_records`, matching every other method on the backend and closing a TOCTOU race that could raise `IndexError` under concurrent `append()` (#145)

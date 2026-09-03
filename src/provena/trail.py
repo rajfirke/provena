@@ -513,8 +513,8 @@ class ContextTrail:
     ) -> None:
         try:
             items = self._extract_content(result, content_extractor)
-            provenance = self._extract_provenance(result)
-            for content in items:
+            provenances = self._extract_provenances(result, len(items))
+            for content, provenance in zip(items, provenances, strict=True):
                 self._log_internal(
                     content=content,
                     source=source,
@@ -566,6 +566,32 @@ class ContextTrail:
         if hasattr(item, "text"):
             return str(item.text)
         return str(item)
+
+    def _extract_provenances(
+        self, result: Any, count: int
+    ) -> list[ProvenanceMetadata | None]:
+        """Provenance for each content item extracted from ``result``.
+
+        A retriever returning ten Documents should record ten distinct
+        sources, so when ``result`` is a sequence that produced exactly one
+        content item per element, provenance is read from each element.
+
+        The counts fail to line up when a ``content_extractor`` reshapes the
+        result, or when the result is not a sequence. The mapping from item
+        back to element is unknown in those cases, so provenance is read from
+        ``result`` as a whole and shared across the items, which is what every
+        case did before per-element extraction was added.
+
+        Args:
+            result: The value returned by the tracked function.
+            count: Number of content items ``_extract_content`` produced.
+
+        Returns:
+            A list of exactly ``count`` provenance values, one per item.
+        """
+        if isinstance(result, (list, tuple)) and len(result) == count:
+            return [self._extract_provenance(item) for item in result]
+        return [self._extract_provenance(result)] * count
 
     def _extract_provenance(self, result: Any) -> ProvenanceMetadata | None:
         if hasattr(result, "metadata") and isinstance(result.metadata, dict):
