@@ -40,6 +40,11 @@ class RetentionEngine:
     supports export-before-delete for compliance archival.
     """
 
+    #: Page size used when scanning for expired records. Exposed as an
+    #: attribute (rather than a hardcoded literal) so tests can shrink it to
+    #: exercise the multi-batch pagination path without inserting 10k+ rows.
+    _QUERY_BATCH_SIZE = 10000
+
     def __init__(
         self,
         trail: Any,
@@ -76,8 +81,18 @@ class RetentionEngine:
         """
         reference = now or datetime.now(timezone.utc)
         cutoff = reference - timedelta(days=self._retention_days)
-        result: list[dict[str, Any]] = self._trail.query(end=cutoff, limit=10000)
-        return result
+        batch = self._QUERY_BATCH_SIZE
+        expired: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            page: list[dict[str, Any]] = self._trail.query(
+                end=cutoff, limit=batch, offset=offset
+            )
+            expired.extend(page)
+            if len(page) < batch:
+                break
+            offset += batch
+        return expired
 
     def preview(self, now: datetime | None = None) -> dict[str, Any]:
         """Preview what a retention run would do without making changes.

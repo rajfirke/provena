@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **`RetentionEngine` no longer silently caps at 10,000 expired records per run** — `find_expired()` now pages through the full result set in batches, so `preview()` and `execute()` act on every expired record instead of only the first 10k (#102)
 - **`record_count`, `summary()`, and `export()` now include unflushed buffered records** in buffered mode. Previously all three read only from the backend, so `record_count` was always 0 until the next flush, `summary()` reported stale aggregates, and `export()` silently omitted pending writes. `record_count` and `summary()` now merge `WriteBuffer.pending_records` into the backend snapshot without flushing; `export()` flushes explicitly so the backend view is always complete (#150)
 - **`@trail.track` now extracts provenance per document** when the decorated
   function returns a list. `_extract_provenance` ran on the list itself, which
