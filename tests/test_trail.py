@@ -946,3 +946,59 @@ class TestDisabledMode:
             t.close()
         finally:
             trail_module._DISABLED = original
+
+
+class TestContextSourceMcpAndMemory:
+    def test_log_and_query_mcp_source(self, memory_trail):
+        r1 = memory_trail.log("tool output from mcp", source="mcp:filesystem")
+        assert r1 is not None
+        assert r1.entry.source == ContextSource.MCP
+        assert r1.entry.source_name == "filesystem"
+
+        r2 = memory_trail.log("explicit enum mcp", source=ContextSource.MCP, source_name="github")
+        assert r2 is not None
+        assert r2.entry.source == ContextSource.MCP
+        assert r2.entry.source_name == "github"
+
+        # Query by ContextSource.MCP
+        mcp_records = memory_trail.query(source=ContextSource.MCP)
+        assert len(mcp_records) == 2
+        assert all(r["source"] == "mcp" for r in mcp_records)
+
+        # Query by string "mcp"
+        mcp_str_records = memory_trail.query(source="mcp")
+        assert len(mcp_str_records) == 2
+
+    def test_log_and_query_memory_source(self, memory_trail):
+        r1 = memory_trail.log("recalled context", source="memory:long_term")
+        assert r1 is not None
+        assert r1.entry.source == ContextSource.MEMORY
+        assert r1.entry.source_name == "long_term"
+
+        r2 = memory_trail.log("working memory", source=ContextSource.MEMORY, source_name="working")
+        assert r2 is not None
+        assert r2.entry.source == ContextSource.MEMORY
+        assert r2.entry.source_name == "working"
+
+        # Query by ContextSource.MEMORY
+        mem_records = memory_trail.query(source=ContextSource.MEMORY)
+        assert len(mem_records) == 2
+        assert all(r["source"] == "memory" for r in mem_records)
+
+    def test_mcp_and_memory_in_summary_and_export(self, memory_trail):
+        memory_trail.log("mcp content", source="mcp:filesystem")
+        memory_trail.log("memory content", source="memory:agent_memory")
+
+        summary = memory_trail.summary()
+        assert summary.get("total") == 2
+        sources = summary.get("sources", {})
+        assert sources.get("mcp") == 1
+        assert sources.get("memory") == 1
+
+        # Export json
+        json_export = memory_trail.export(format="json")
+        data = json.loads(json_export)
+        assert len(data) == 2
+        assert data[0]["source"] == "mcp"
+        assert data[1]["source"] == "memory"
+

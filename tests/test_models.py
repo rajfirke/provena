@@ -322,6 +322,36 @@ class TestParseSource:
         assert src == ContextSource.TOOL
         assert name == "custom_name"
 
+    def test_mcp_source(self):
+        src, name = _parse_source(ContextSource.MCP, "filesystem")
+        assert src == ContextSource.MCP
+        assert name == "filesystem"
+
+    def test_mcp_string_with_colon(self):
+        src, name = _parse_source("mcp:filesystem", "")
+        assert src == ContextSource.MCP
+        assert name == "filesystem"
+
+    def test_mcp_string_simple(self):
+        src, name = _parse_source("mcp", "")
+        assert src == ContextSource.MCP
+        assert name == "mcp"
+
+    def test_memory_source(self):
+        src, name = _parse_source(ContextSource.MEMORY, "long_term")
+        assert src == ContextSource.MEMORY
+        assert name == "long_term"
+
+    def test_memory_string_with_colon(self):
+        src, name = _parse_source("memory:long_term", "")
+        assert src == ContextSource.MEMORY
+        assert name == "long_term"
+
+    def test_memory_string_simple(self):
+        src, name = _parse_source("memory", "")
+        assert src == ContextSource.MEMORY
+        assert name == "memory"
+
 
 class TestPrepareContent:
     def test_string(self):
