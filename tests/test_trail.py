@@ -858,7 +858,9 @@ class TestContextSourceMcpAndMemory:
         assert r1.entry.source == ContextSource.MCP
         assert r1.entry.source_name == "filesystem"
 
-        r2 = memory_trail.log("explicit enum mcp", source=ContextSource.MCP, source_name="github")
+        r2 = memory_trail.log(
+            "explicit enum mcp", source=ContextSource.MCP, source_name="github"
+        )
         assert r2 is not None
         assert r2.entry.source == ContextSource.MCP
         assert r2.entry.source_name == "github"
@@ -878,7 +880,9 @@ class TestContextSourceMcpAndMemory:
         assert r1.entry.source == ContextSource.MEMORY
         assert r1.entry.source_name == "long_term"
 
-        r2 = memory_trail.log("working memory", source=ContextSource.MEMORY, source_name="working")
+        r2 = memory_trail.log(
+            "working memory", source=ContextSource.MEMORY, source_name="working"
+        )
         assert r2 is not None
         assert r2.entry.source == ContextSource.MEMORY
         assert r2.entry.source_name == "working"
@@ -904,4 +908,3 @@ class TestContextSourceMcpAndMemory:
         assert len(data) == 2
         assert data[0]["source"] == "mcp"
         assert data[1]["source"] == "memory"
-
