@@ -12,15 +12,14 @@
 
 Your AI agent just made a decision based on data from 6 different sources.
 Can you tell me which ones? Can you prove the data wasn't tampered with?
-Can you verify it was still current?
+Can you verify it was still current when the LLM saw it?
 
-Provena adds tamper-evident audit trails to any AI agent's context pipeline — in 3 lines of Python.
+Provena adds tamper-evident audit trails to any AI agent's context pipeline — in one decorator:
 
 ```python
 from provena import ContextTrail
 
-trail = ContextTrail()
-
+trail = ContextTrail(storage_path="audit.db")
 
 @trail.track(source="retriever")
 def search(query):
@@ -28,22 +27,24 @@ def search(query):
 ```
 
 Every call to `search()` is now logged with a SHA-256 content hash, provenance validation,
-and a hash-chained audit trail that detects tampering.
+freshness check, and a hash-chained audit trail that detects tampering.
 
 ## Why Provena?
 
 > **AGT governs what agents DO. Guardrails AI governs what agents SAY. Provena governs what agents KNOW.**
 
-No existing tool governs the context input layer. Provena fills this gap with:
+No existing tool governs the context input layer — the data your agent retrieves and acts on.
+Provena fills this gap:
 
-- **Tamper-evident audit trails** — SHA-256 hash-chained (Merkle-style) logging with optional HMAC signing
-- **Provenance validation** — Verify that context carries proper source metadata (VALID / MISSING / INCOMPLETE)
-- **Freshness checking** — Detect stale context via metadata timestamps and regex temporal detection (FRESH / STALE / UNKNOWN)
-- **Policy enforcement** — Block, warn, or log governance violations with configurable rules
-- **Multi-agent governance** — Aggregate and query across multiple agent trails with handoff tracking
-- **Any context source** — RAG retrievers, tool outputs, agent messages, memory recalls, MCP resources
-- **Sub-1ms overhead** — Pure Python, no ML models, no downloads
-- **Zero core dependencies** — Core library uses only the Python standard library
+| | Provena | LangSmith | Guardrails AI | OpenTelemetry |
+|---|---|---|---|---|
+| Context tamper detection | ✅ | ❌ | ❌ | ❌ |
+| Provenance validation | ✅ | ❌ | ❌ | ❌ |
+| Freshness checking | ✅ | ❌ | ❌ | ❌ |
+| EU AI Act compliance reports | ✅ | ❌ | ❌ | ❌ |
+| Policy enforcement (block/warn) | ✅ | ❌ | ✅ (output) | ❌ |
+| Multi-agent handoff tracking | ✅ | ✅ | ❌ | ❌ |
+| Zero core dependencies | ✅ | ❌ | ❌ | ❌ |
 
 ## Install
 
@@ -77,19 +78,15 @@ from datetime import datetime, timezone
 
 trail = ContextTrail(storage_path="audit.db")
 
-
-# Track any function that produces context
 @trail.track(source="retriever")
 def search(query):
     return retriever.search(query)
-
 
 @trail.track(source="tool:pricing_api")
 def get_price(product_id):
     return api.get(f"/price/{product_id}")
 
-
-# Manual logging with provenance metadata
+# Manual logging with full provenance
 trail.log(
     content="The enterprise plan costs $499/month.",
     source="tool:pricing_api",
@@ -99,33 +96,124 @@ trail.log(
     ),
 )
 
-# Verify the audit trail hasn't been tampered with
+# Verify the chain hasn't been tampered with
 verdict = trail.verify_chain()
-print(f"Chain intact: {verdict.intact}")
-print(f"Total records: {verdict.total_records}")
+# ChainVerdict(intact=True, total_records=3, broken_links=0)
+
+# Get a governance summary
+print(trail.summary())
+# {
+#   "total": 3,
+#   "sources": {"retriever": 1, "tool:pricing_api": 2},
+#   "provenance": {"VALID": 2, "MISSING": 1},
+#   "freshness": {"FRESH": 2, "UNKNOWN": 1},
+#   "chain_intact": True,
+#   "signed": False
+# }
+```
+
+## End-to-End: RAG Pipeline with Governance
+
+A complete example showing a multi-source retrieval pipeline where one source gets flagged:
+
+```python
+from provena import (
+    ContextTrail,
+    ProvenanceMetadata,
+    freshness_check,
+    provenance_check,
+    EnforcementLevel,
+    PolicyViolation,
+)
+from datetime import datetime, timedelta, timezone
+
+trail = ContextTrail(
+    storage_path="audit.db",
+    policies=[
+        provenance_check(status="MISSING", enforcement=EnforcementLevel.WARN),
+        freshness_check(status="STALE", enforcement=EnforcementLevel.BLOCK),
+    ],
+)
+
+@trail.track(source="retriever")
+def fetch_docs(query):
+    # Returns a list — Provena extracts provenance per document
+    return vector_db.search(query)
+
+@trail.track(source="tool:web_search")
+def web_search(query):
+    return search_api.get(query)
+
+# --- Run the pipeline ---
+
+# Fresh doc with full provenance — passes all checks
+doc = fetch_docs("enterprise pricing")
+
+try:
+    # Stale result triggers BLOCK policy
+    old_result = web_search("competitor pricing")
+except PolicyViolation as e:
+    print(f"Blocked: {e}")
+    # Blocked: freshness_check failed — STALE context blocked before reaching LLM
+
+# The blocked entry is still logged for the compliance record
+verdict = trail.verify_chain()
+print(f"Chain intact: {verdict.intact}, records: {verdict.total_records}")
+# Chain intact: True, records: 2
+
+# Generate a compliance report
+trail.export(format="json")  # or "csv", "json_with_annotations"
+```
+
+### What the CLI shows
+
+```bash
+$ provena --db audit.db audit --format table
+
+ ID  Source            Provenance  Freshness  Content Hash
+  1  retriever         VALID       FRESH      a3f9c1...
+  2  tool:web_search   VALID       STALE      b2e4d7...
+
+$ provena --db audit.db verify
+PASS — Chain intact (2 records verified)
+
+$ provena --db audit.db summary
+Total records : 2
+Sources       : retriever=1, tool:web_search=1
+Provenance    : VALID=2
+Freshness     : FRESH=1  STALE=1
+Chain         : intact
+Signed        : no
 ```
 
 ## Policy Enforcement
 
-Move from observe-only to enforce. Block stale or unverified context before it reaches the LLM:
+Three enforcement levels give you full control over the governance posture:
 
 ```python
-from provena import ContextTrail, freshness_check, provenance_check, EnforcementLevel
+from provena import ContextTrail, freshness_check, provenance_check, require_signing
 
 trail = ContextTrail(
     storage_path="audit.db",
     policies=[
         provenance_check(status="MISSING", enforcement=EnforcementLevel.BLOCK),
         freshness_check(status="STALE", enforcement=EnforcementLevel.WARN),
+        require_signing(enforcement=EnforcementLevel.LOG),
     ],
 )
 ```
 
-Three enforcement levels: `LOG` (record only), `WARN` (callback + pass through), `BLOCK` (raise `PolicyViolation`). Blocked entries are still logged for compliance — the audit trail shows what was rejected and why.
+| Level | Behavior |
+|-------|----------|
+| `LOG` | Record the violation, continue |
+| `WARN` | Call the warning callback, continue |
+| `BLOCK` | Raise `PolicyViolation`, halt the call |
+
+Blocked entries are **always persisted** to the audit trail — the record shows what was rejected and why, satisfying EU AI Act Art. 12.
 
 ## Multi-Agent Governance
 
-Aggregate governance across multiple agents with handoff tracking:
+Aggregate governance across a full agent pipeline with handoff tracking:
 
 ```python
 from provena import ContextTrail, TrailAggregator
@@ -137,12 +225,23 @@ agg = TrailAggregator()
 agg.add(researcher, label="researcher")
 agg.add(writer, label="writer")
 
-# Record agent-to-agent handoffs
+# Record context handoffs between agents
 agg.record_handoff(from_label="researcher", to_label="writer", record_id=5)
 
-# Query across all agents
-summary = agg.summary()
-gaps = agg.detect_gaps()  # find missing provenance, broken chains, unlinked handoffs
+# Cross-agent governance summary
+print(agg.summary())
+# {
+#   "total_records": 12,
+#   "trails": {"researcher": 7, "writer": 5},
+#   "provenance": {"VALID": 10, "MISSING": 2},
+#   "all_chains_intact": True,
+#   "all_signed": False
+# }
+
+# Surface governance gaps across the full pipeline
+gaps = agg.detect_gaps()
+# [EvidenceGap(type="MISSING_PROVENANCE", trail="researcher", record_id=3),
+#  EvidenceGap(type="UNLINKED_HANDOFF", trail="writer", record_id=1)]
 ```
 
 ## CLI
@@ -156,15 +255,23 @@ provena --db audit.db verify
 
 # Query the audit log
 provena --db audit.db audit --source retriever --format json
+provena --db audit.db audit --provenance-status MISSING
+provena --db audit.db audit --freshness-status STALE
 
-# Generate a governance report
+# Governance summary (with optional source filter)
+provena --db audit.db summary --source retriever
+
+# One-line CI/CD status check
+provena --db audit.db stats
+# records=42 provenance=VALID:40,MISSING:2 freshness=FRESH:38,STALE:4 chain=intact signed=yes
+
+# Retention management (EU AI Act 180-day minimum enforced)
+provena --db audit.db retain --max-age 365 --dry-run
+provena --db audit.db retain --max-age 365 --archive backup.json
+
+# Generate a compliance report
 provena --db audit.db report --format text
-
-# Quick summary
-provena --db audit.db summary
-
-# Retention management
-provena --db audit.db retain --max-age 180 --dry-run
+provena --db audit.db report --format pdf   # requires provena[pdf]
 
 # Start MCP server for governance-aware agents
 provena mcp serve --db audit.db
@@ -225,48 +332,58 @@ trail = ContextTrail(
     otel_enabled=True,
     otel_service_name="my-agent",
 )
-# Every log() call now emits an OTel span with governance attributes
+# Every log() call emits an OTel span with provenance, freshness, and chain attributes
 ```
 
 ### Configuration Files
 
-```bash
-# TOML (zero dependencies on Python 3.11+)
-trail = ContextTrail(config="provena.toml")
+```toml
+# provena.toml
+[storage]
+path = "audit.db"
+buffered = true
 
-# YAML (requires provena[yaml])
-trail = ContextTrail(config="trail.yaml")
+[hash_chain]
+signing_key_env = "PROVENA_SIGNING_KEY"
+
+[[policies]]
+check = "freshness_check"
+status = "STALE"
+enforcement = "BLOCK"
+```
+
+```python
+trail = ContextTrail(config="provena.toml")
 ```
 
 ## Architecture
 
 ```
 Your Application
-|
-|  Retriever ---+
-|  Tool Call ---+
-|  Agent Msg ---+---> ContextTrail ------> LLM Context Window
-|  Memory    ---+        |
-|  MCP       ---+        |
-|                  +-----+----------------------+
-|                  | ProvenanceValidator         |
-|                  | FreshnessChecker            |
-|                  | PolicyEngine (block/warn)   |
-|                  | HashChain (SHA-256 / HMAC)  |
-|                  | WriteBuffer (10K+ entries/s)|
-|                  | SQLite / PostgreSQL Backend |
-|                  | OTel Exporter              |
-|                  +----------------------------+
-|
-|  TrailAggregator (multi-agent)
-|  RetentionEngine (lifecycle)
-|  ComplianceReport (EU AI Act / OWASP)
-|  MCP Server (governance-aware agents)
+    │
+    ├── Retriever ──┐
+    ├── Tool Call ──┤
+    ├── Agent Msg ──┤──► ContextTrail ──────────────► LLM Context Window
+    ├── Memory    ──┤         │
+    └── MCP       ──┘    ┌────┴───────────────────────┐
+                         │ ProvenanceValidator         │
+                         │ FreshnessChecker            │
+                         │ PolicyEngine (block/warn)   │
+                         │ HashChain (SHA-256 / HMAC)  │
+                         │ WriteBuffer (10K+ writes/s) │
+                         │ SQLite / PostgreSQL Backend │
+                         │ OTel Exporter               │
+                         └────────────────────────────┘
+    │
+    ├── TrailAggregator   — multi-agent cross-trail governance
+    ├── RetentionEngine   — record lifecycle + EU AI Act 180-day minimum
+    ├── ComplianceReport  — EU AI Act / OWASP article-by-article scoring
+    └── MCP Server        — governance tools for agents via MCP protocol
 ```
 
 ## Compliance
 
-Provena maps directly to EU AI Act requirements:
+Provena maps directly to EU AI Act requirements for high-risk AI systems:
 
 | Article | Requirement | Provena Feature |
 |---------|------------|-----------------|
@@ -279,7 +396,7 @@ Provena maps directly to EU AI Act requirements:
 
 Also addresses **OWASP ASI06** (Memory & Context Poisoning).
 
-Generate compliance reports: `provena --db audit.db report --format pdf`
+Generate a PDF compliance report: `provena --db audit.db report --format pdf`
 
 See the [full compliance documentation](https://rajfirke.github.io/provena/compliance/eu-ai-act/).
 
