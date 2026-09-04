@@ -106,6 +106,47 @@ class TestCLIAudit:
         finally:
             os.unlink(db_path)
 
+    def test_audit_filter_by_run_id(self):
+        db_path = _create_trail_db(0)
+        trail = ContextTrail(storage_path=db_path)
+        trail.log("planner output", source="agent", metadata={"run_id": "run-123"})
+        trail.log("tool output", source="tool", metadata={"run_id": "run-123"})
+        trail.log("other output", source="agent", metadata={"run_id": "run-456"})
+        trail.close()
+
+        try:
+            result = CliRunner().invoke(
+                cli,
+                ["--db", db_path, "audit", "--run-id", "run-123", "--format", "json"],
+            )
+
+            assert result.exit_code == 0
+            data = json.loads(result.output)
+            assert len(data) == 2
+            assert all(
+                json.loads(record["metadata_json"])["run_id"] == "run-123"
+                for record in data
+            )
+        finally:
+            os.unlink(db_path)
+
+    def test_audit_unknown_run_id_returns_no_records(self):
+        db_path = _create_trail_db(0)
+        trail = ContextTrail(storage_path=db_path)
+        trail.log("planner output", source="agent", metadata={"run_id": "run-123"})
+        trail.close()
+
+        try:
+            result = CliRunner().invoke(
+                cli,
+                ["--db", db_path, "audit", "--run-id", "unknown-run"],
+            )
+
+            assert result.exit_code == 0
+            assert result.output == "No records found.\n"
+        finally:
+            os.unlink(db_path)
+
     def test_audit_limit(self):
         db_path = _create_trail_db(10)
         try:

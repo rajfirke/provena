@@ -124,6 +124,11 @@ def _open_trail(ctx: click.Context) -> tuple[ContextTrail, str]:
     type=click.Choice(["table", "json"]),
     help="Output format.",
 )
+@click.option(
+    "--run-id",
+    default=None,
+    help="Filter records by workflow run ID.",
+)
 @click.pass_context
 def audit(
     ctx: click.Context,
@@ -134,6 +139,7 @@ def audit(
     start: datetime | None,
     end: datetime | None,
     fmt: str,
+    run_id: str | None,
 ) -> None:
     """Query the context governance audit log."""
     trail, _ = _open_trail(ctx)
@@ -145,6 +151,7 @@ def audit(
             limit=limit,
             start=start,
             end=end,
+            run_id=run_id,
         )
 
         if not records:
