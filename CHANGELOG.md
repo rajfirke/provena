@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **`provena audit` gains a `--run-id` filter**, allowing a workflow execution
+  to be inspected through its records. The filter is supported by SQLite,
+  PostgreSQL, and in-memory storage backends, and matches the `run_id` stored
+  in each record's metadata (#151)
 - **`provena audit` gains `--provenance-status` and `--freshness-status`
   filters**, exposing the `trail.query()` filters that were already supported
   by the API. Values are case-insensitive, and an unrecognized status is

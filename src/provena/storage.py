@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from datetime import datetime
@@ -78,6 +79,7 @@ class StorageBackend(Protocol):
         freshness_status: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        run_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Query records with optional filters."""
         ...
@@ -217,6 +219,7 @@ class SQLiteBackend:
         freshness_status: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        run_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Query records with optional filters."""
         clauses: list[str] = []
@@ -237,7 +240,9 @@ class SQLiteBackend:
         if freshness_status is not None:
             clauses.append("freshness_status = ?")
             params.append(freshness_status)
-
+        if run_id is not None:
+            clauses.append("json_extract(metadata_json, '$.run_id') = ?")
+            params.append(run_id)
         where = " AND ".join(clauses) if clauses else "1=1"
         sql = f"SELECT * FROM trail WHERE {where} ORDER BY id ASC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
@@ -326,6 +331,7 @@ class InMemoryBackend:
         freshness_status: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        run_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Query records with optional filters."""
         with self._lock:
@@ -349,6 +355,12 @@ class InMemoryBackend:
                 r
                 for r in results
                 if r.get("freshness_status", "UNKNOWN") == freshness_status
+            ]
+        if run_id is not None:
+            results = [
+                r
+                for r in results
+                if json.loads(r["metadata_json"]).get("run_id") == run_id
             ]
         return [{**r} for r in results[offset : offset + limit]]
 

@@ -206,6 +206,7 @@ class PostgreSQLBackend:
         freshness_status: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        run_id: str | None = None,
     ) -> list[dict[str, Any]]:
         self._check_open()
         clauses: list[str] = []
@@ -226,6 +227,9 @@ class PostgreSQLBackend:
         if freshness_status is not None:
             clauses.append("freshness_status = %s")
             params.append(freshness_status)
+        if run_id is not None:
+            clauses.append("metadata_json ->> 'run_id' = %s")
+            params.append(run_id)
 
         where = " AND ".join(clauses) if clauses else "TRUE"
         sql = f"SELECT * FROM trail WHERE {where} ORDER BY id ASC LIMIT %s OFFSET %s"
