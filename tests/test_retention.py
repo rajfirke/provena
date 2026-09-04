@@ -140,3 +140,37 @@ class TestRetentionCLI:
         runner = CliRunner()
         result = runner.invoke(cli, ["retain", "--max-age", "30"])
         assert result.exit_code == 1
+
+
+class TestRetentionPagination:
+    """Regression tests for #102: retention must not silently cap at one batch."""
+
+    def _old_trail(self, count: int) -> ContextTrail:
+        trail = ContextTrail(backend="memory")
+        now = datetime.now(timezone.utc)
+        for i in range(count):
+            trail.log(f"old record {i}", source="retriever")
+        for record in trail._backend._records:
+            record["timestamp"] = (now - timedelta(days=400)).isoformat()
+        return trail
+
+    def test_find_expired_pages_beyond_one_batch(self):
+        trail = self._old_trail(7)
+        try:
+            engine = RetentionEngine(trail, retention_days=180)
+            engine._QUERY_BATCH_SIZE = 2
+            expired = engine.find_expired()
+            assert len(expired) == 7
+            assert engine.preview()["would_delete"] == 7
+        finally:
+            trail.close()
+
+    def test_execute_purges_all_beyond_one_batch(self):
+        trail = self._old_trail(7)
+        try:
+            engine = RetentionEngine(trail, retention_days=180)
+            engine._QUERY_BATCH_SIZE = 2
+            result = engine.execute()
+            assert result.deleted == 7
+        finally:
+            trail.close()
