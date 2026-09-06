@@ -962,3 +962,16 @@ class TestContextTrailBufferedReads:
         trail_with_buffer.log("buffered entry", source="retriever")
         trail_with_buffer.export(format="json")
         assert len(trail_with_buffer._buffer) == 0
+
+    def test_verify_chain_flushes_and_checks_pending_records(self, trail_with_buffer):
+        trail_with_buffer.log("persisted entry", source="retriever")
+        trail_with_buffer.flush()
+        trail_with_buffer.log("tampered pending entry", source="retriever")
+        trail_with_buffer._buffer._buffer[0]["chain_hash"] = "tampered"
+
+        verdict = trail_with_buffer.verify_chain()
+
+        assert not verdict.intact
+        assert verdict.total_records == 2
+        assert verdict.broken_at == 2
+        assert trail_with_buffer._buffer.pending == 0

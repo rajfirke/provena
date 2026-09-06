@@ -617,12 +617,17 @@ class ContextTrail:
     def verify_chain(self) -> ChainVerdict:
         """Verify the integrity of the entire hash chain.
 
+        Flushes pending buffered records before verification so the verdict
+        always covers the complete trail.
+
         Recomputes every chain hash from the genesis hash forward and checks
         each against the stored value.
 
         Returns:
             A ChainVerdict indicating whether the chain is intact.
         """
+        if self._buffer is not None:
+            self._buffer.flush()
         records = self._backend.all_records()
         if not records:
             return ChainVerdict(intact=True, total_records=0, details="Empty trail")
