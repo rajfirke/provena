@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import signal
 import time
 
 from provena import ContextTrail
@@ -90,6 +91,26 @@ class TestWriteBuffer:
         buf = WriteBuffer(backend, buffer_size=100, flush_interval=60)
         assert buf.flush() == 0
         buf.close()
+
+    def test_sigterm_flushes_every_active_buffer(self):
+        previous_handler = signal.getsignal(signal.SIGTERM)
+        first_backend = InMemoryBackend()
+        second_backend = InMemoryBackend()
+        first = WriteBuffer(first_backend, buffer_size=100, flush_interval=60)
+        handler = signal.getsignal(signal.SIGTERM)
+        second = WriteBuffer(second_backend, buffer_size=100, flush_interval=60)
+        try:
+            first.append({"content_hash": "first"})
+            second.append({"content_hash": "second"})
+            assert signal.getsignal(signal.SIGTERM) is handler
+            assert callable(handler)
+            handler(signal.SIGTERM, None)
+            assert first_backend.count() == 1
+            assert second_backend.count() == 1
+        finally:
+            first.close()
+            second.close()
+            signal.signal(signal.SIGTERM, previous_handler)
 
 
 class TestContextTrailBuffered:
