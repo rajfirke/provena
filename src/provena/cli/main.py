@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import click
@@ -197,50 +197,31 @@ def verify(ctx: click.Context) -> None:
 @click.pass_context
 def report(ctx: click.Context, fmt: str, output: str | None) -> None:
     """Generate a context governance compliance report."""
-    trail, db_path = _open_trail(ctx)
+    trail, _ = _open_trail(ctx)
     try:
-        summary = trail.summary()
-        verdict = trail.verify_chain()
+        if fmt == "csv":
+            csv_content = trail.export(format="csv")
+            if output:
+                with open(output, "w") as f:
+                    f.write(csv_content)
+                click.echo(f"Report written to {output}")
+            else:
+                click.echo(csv_content)
+            return
 
-        report_data = {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "database": db_path,
-            "total_records": summary["total"],
-            "chain_integrity": {
-                "status": "INTACT" if verdict.intact else "BROKEN",
-                "records_verified": verdict.total_records,
-                "broken_at": verdict.broken_at,
-            },
-            "provenance": summary.get("provenance", {}),
-            "freshness": summary.get("freshness", {}),
-            "sources": summary.get("sources", {}),
-            "signed": summary.get("signed", False),
-        }
+        from provena.report import generate_report
 
+        content = generate_report(trail, format=fmt)
         if fmt == "pdf":
-            from provena.report import generate_pdf_report
-
             pdf_path = output or "provena-report.pdf"
-            generate_pdf_report(trail, pdf_path)
+            if not isinstance(content, bytes):  # pragma: no cover - format contract
+                raise TypeError("PDF report renderer returned non-bytes content")
+            with open(pdf_path, "wb") as f:
+                f.write(content)
             click.echo(f"PDF report written to {pdf_path}")
-        elif fmt == "json":
-            content = json.dumps(report_data, indent=2)
-            if output:
-                with open(output, "w") as f:
-                    f.write(content)
-                click.echo(f"Report written to {output}")
-            else:
-                click.echo(content)
-        elif fmt == "csv":
-            content = trail.export(format="csv")
-            if output:
-                with open(output, "w") as f:
-                    f.write(content)
-                click.echo(f"Report written to {output}")
-            else:
-                click.echo(content)
         else:
-            content = _format_text_report(report_data)
+            if not isinstance(content, str):  # pragma: no cover - format contract
+                raise TypeError(f"{fmt} report renderer returned non-text content")
             if output:
                 with open(output, "w") as f:
                     f.write(content)
@@ -606,43 +587,6 @@ def _print_plain_table(records: list[dict[str, Any]]) -> None:
             f"{r.get('provenance_status', '?'):12s}  "
             f"{r.get('freshness_status', '?'):7s}"
         )
-
-
-def _format_text_report(data: dict[str, Any]) -> str:
-    lines = [
-        "=" * 50,
-        "PROVENA GOVERNANCE REPORT",
-        "=" * 50,
-        f"Generated: {data['generated_at']}",
-        f"Database:  {data['database']}",
-        f"Records:   {data['total_records']}",
-        f"Signed:    {'Yes' if data.get('signed') else 'No'}",
-        "",
-        "Chain Integrity:",
-        f"  Status:   {data['chain_integrity']['status']}",
-        f"  Verified: {data['chain_integrity']['records_verified']} records",
-    ]
-
-    if data["chain_integrity"]["broken_at"] is not None:
-        lines.append(f"  Broken at record: {data['chain_integrity']['broken_at']}")
-
-    lines.append("")
-    lines.append("Provenance:")
-    for status, count in sorted(data.get("provenance", {}).items()):
-        lines.append(f"  {status:12s} {count}")
-
-    lines.append("")
-    lines.append("Freshness:")
-    for status, count in sorted(data.get("freshness", {}).items()):
-        lines.append(f"  {status:12s} {count}")
-
-    lines.append("")
-    lines.append("Sources:")
-    for src, count in sorted(data.get("sources", {}).items()):
-        lines.append(f"  {src:12s} {count}")
-
-    lines.append("=" * 50)
-    return "\n".join(lines)
 
 
 @cli.command()

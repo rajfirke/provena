@@ -528,11 +528,13 @@ class TestMultiSourceAgentPipeline:
             assert result.exit_code == 0
 
             report = json.loads(result.output)
-            assert report["total_records"] == api_summary["total"]
+            assert report["summary"]["total_records"] == api_summary["total"]
             assert report["chain_integrity"]["status"] == "INTACT"
-            assert report["provenance"] == api_summary["provenance"]
-            assert report["freshness"] == api_summary["freshness"]
-            assert report["sources"] == api_summary["sources"]
+            assert report["summary"]["provenance"] == api_summary["provenance"]
+            assert report["summary"]["freshness"] == api_summary["freshness"]
+            assert report["summary"]["sources"] == api_summary["sources"]
+            assert "compliance_score" in report
+            assert "eu_ai_act" in report
         finally:
             os.unlink(db_path)
 

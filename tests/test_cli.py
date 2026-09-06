@@ -425,11 +425,13 @@ class TestCLIReport:
             result = runner.invoke(cli, ["--db", db_path, "report"])
             assert result.exit_code == 0
             data = json.loads(result.output)
-            assert data["total_records"] == 3
+            assert data["summary"]["total_records"] == 3
             assert data["chain_integrity"]["status"] == "INTACT"
-            assert "provenance" in data
-            assert "freshness" in data
-            assert "sources" in data
+            assert "compliance_score" in data
+            assert "eu_ai_act" in data
+            assert "provenance" in data["summary"]
+            assert "freshness" in data["summary"]
+            assert "sources" in data["summary"]
         finally:
             os.unlink(db_path)
 
@@ -439,8 +441,10 @@ class TestCLIReport:
             runner = CliRunner()
             result = runner.invoke(cli, ["--db", db_path, "report", "--format", "text"])
             assert result.exit_code == 0
-            assert "PROVENA GOVERNANCE REPORT" in result.output
-            assert "Chain Integrity" in result.output
+            assert "Provena Governance Compliance Report" in result.output
+            assert "COMPLIANCE SCORE" in result.output
+            assert "CHAIN INTEGRITY" in result.output
+            assert "EU AI ACT" in result.output
             assert "INTACT" in result.output
         finally:
             os.unlink(db_path)
@@ -460,7 +464,9 @@ class TestCLIReport:
 
             with open(out_path) as f:
                 data = json.loads(f.read())
-            assert data["total_records"] == 3
+            assert data["summary"]["total_records"] == 3
+            assert "compliance_score" in data
+            assert "eu_ai_act" in data
         finally:
             os.unlink(db_path)
             os.unlink(out_path)
@@ -492,6 +498,34 @@ class TestCLIReport:
 
             assert "id,timestamp,source,source_name,content_hash" in content
             assert "src_0" in content
+        finally:
+            os.unlink(db_path)
+            os.unlink(out_path)
+
+    def test_report_pdf_to_file_uses_shared_generator(self, monkeypatch):
+        from provena import report as report_module
+
+        db_path = _create_trail_db()
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            out_path = f.name
+
+        formats = []
+
+        def fake_generate_report(trail, *, format):
+            formats.append(format)
+            return b"%PDF-shared-report"
+
+        monkeypatch.setattr(report_module, "generate_report", fake_generate_report)
+        try:
+            result = CliRunner().invoke(
+                cli,
+                ["--db", db_path, "report", "--format", "pdf", "--output", out_path],
+            )
+
+            assert result.exit_code == 0
+            assert formats == ["pdf"]
+            with open(out_path, "rb") as f:
+                assert f.read() == b"%PDF-shared-report"
         finally:
             os.unlink(db_path)
             os.unlink(out_path)
