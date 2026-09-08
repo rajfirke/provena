@@ -668,6 +668,7 @@ class ContextTrail:
         freshness_status: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        run_id: str | None = None,
     ) -> list[dict[str, Any]]:
         if limit < 1:
             raise ValueError(f"limit must be >= 1, got {limit}")
@@ -683,6 +684,7 @@ class ContextTrail:
             freshness_status=freshness_status,
             limit=limit,
             offset=offset,
+            run_id=run_id,
         )
 
     def annotate(
