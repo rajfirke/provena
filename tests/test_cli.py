@@ -146,22 +146,25 @@ class TestCLIAudit:
             assert result.output == "No records found.\n"
         finally:
             os.unlink(db_path)
+
     def test_audit_run_id_filter_ignores_records_without_metadata(self):
         db_path = _create_trail_db(0)
         trail = ContextTrail(storage_path=db_path)
-        trail.log("no metadata", source="agent")            # metadata_json = None
+        trail.log("no metadata", source="agent")  # metadata_json = None
         trail.log("with run_id", source="agent", metadata={"run_id": "run-99"})
         trail.close()
 
         try:
             result = CliRunner().invoke(
-                cli, ["--db", db_path, "audit", "--run-id", "run-99", "--format", "json"]
+                cli,
+                ["--db", db_path, "audit", "--run-id", "run-99", "--format", "json"],
             )
             assert result.exit_code == 0
             data = json.loads(result.output)
             assert len(data) == 1
         finally:
             os.unlink(db_path)
+
     def test_audit_limit(self):
         db_path = _create_trail_db(10)
         try:
@@ -647,7 +650,10 @@ class TestCLIRetain:
         conn = sqlite3.connect(db_path)
         conn.execute(
             "UPDATE trail SET timestamp = ? WHERE id = ?",
-            ((datetime.now(timezone.utc) - timedelta(days=days)).isoformat(), record_id),
+            (
+                (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(),
+                record_id,
+            ),
         )
         conn.commit()
         conn.close()
