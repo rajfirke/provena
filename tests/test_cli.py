@@ -6,7 +6,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from click.testing import CliRunner
@@ -640,6 +640,89 @@ class TestCLIExport:
         runner = CliRunner()
         result = runner.invoke(cli, ["--db", "/nonexistent/path.db", "export"])
         assert result.exit_code != 0
+
+
+class TestCLIRetain:
+    def _age_record(self, db_path: str, record_id: int, days: int) -> None:
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "UPDATE trail SET timestamp = ? WHERE id = ?",
+            ((datetime.now(timezone.utc) - timedelta(days=days)).isoformat(), record_id),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_retain_dry_run(self):
+        db_path = _create_trail_db(1)
+        self._age_record(db_path, 1, days=400)
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli, ["--db", db_path, "retain", "--max-age", "180", "--dry-run"]
+            )
+            assert result.exit_code == 0
+            assert "would be deleted" in result.output
+
+            conn = sqlite3.connect(db_path)
+            count = conn.execute("SELECT COUNT(*) FROM trail").fetchone()[0]
+            conn.close()
+            assert count == 1
+        finally:
+            os.unlink(db_path)
+
+    def test_retain_execute(self):
+        db_path = _create_trail_db(1)
+        self._age_record(db_path, 1, days=400)
+        try:
+            runner = CliRunner()
+            result = runner.invoke(cli, ["--db", db_path, "retain", "--max-age", "180"])
+            assert result.exit_code == 0
+            assert "DONE" in result.output
+            assert "Deleted 1 records" in result.output
+        finally:
+            os.unlink(db_path)
+
+    def test_retain_below_eu_minimum(self):
+        db_path = _create_trail_db(1)
+        try:
+            runner = CliRunner()
+            result = runner.invoke(cli, ["--db", db_path, "retain", "--max-age", "90"])
+            assert result.exit_code == 1
+            assert "EU AI Act" in result.output
+        finally:
+            os.unlink(db_path)
+
+    def test_retain_archive(self, tmp_path):
+        db_path = _create_trail_db(1)
+        self._age_record(db_path, 1, days=400)
+        archive_path = tmp_path / "archive.json"
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "--db",
+                    db_path,
+                    "retain",
+                    "--archive",
+                    str(archive_path),
+                    "--max-age",
+                    "365",
+                ],
+            )
+            assert result.exit_code == 0
+            assert "Archived 1 records" in result.output
+
+            data = json.loads(archive_path.read_text())
+            assert data["record_count"] == 1
+        finally:
+            os.unlink(db_path)
+
+    def test_retain_missing_db(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--db", "/nonexistent/path.db", "retain"])
+        assert result.exit_code != 0
+        assert "not found" in result.output
 
 
 class TestCLISummary:
