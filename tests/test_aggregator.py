@@ -90,6 +90,64 @@ class TestTrailAggregatorBasics:
             assert agg.summary()["total"] == 1
 
 
+class TestTrailAggregatorClose:
+    def test_close_closes_all_trails(self, tmp_path):
+        agg = TrailAggregator()
+        planner = ContextTrail(storage_path=str(tmp_path / "planner.db"))
+        executor = ContextTrail(storage_path=str(tmp_path / "executor.db"))
+        agg.add("planner", planner)
+        agg.add("executor", executor)
+
+        agg.close()
+
+        assert planner._backend._conn is None
+        assert executor._backend._conn is None
+
+    def test_close_closes_remaining_trails_when_one_raises(self, tmp_path):
+        agg = TrailAggregator()
+        planner = ContextTrail(storage_path=str(tmp_path / "planner.db"))
+        executor = ContextTrail(storage_path=str(tmp_path / "executor.db"))
+        agg.add("planner", planner)
+        agg.add("executor", executor)
+
+        def boom() -> None:
+            raise OSError("simulated disk full")
+
+        planner.close = boom  # type: ignore[method-assign]
+
+        with pytest.raises(OSError, match="simulated disk full"):
+            agg.close()
+
+        assert executor._backend._conn is None
+
+    def test_close_raises_first_error_and_logs_the_rest(self, tmp_path, caplog):
+        agg = TrailAggregator()
+        planner = ContextTrail(storage_path=str(tmp_path / "planner.db"))
+        executor = ContextTrail(storage_path=str(tmp_path / "executor.db"))
+        reviewer = ContextTrail(storage_path=str(tmp_path / "reviewer.db"))
+        agg.add("planner", planner)
+        agg.add("executor", executor)
+        agg.add("reviewer", reviewer)
+
+        def boom_planner() -> None:
+            raise OSError("planner disk full")
+
+        def boom_executor() -> None:
+            raise RuntimeError("executor already closed")
+
+        planner.close = boom_planner  # type: ignore[method-assign]
+        executor.close = boom_executor  # type: ignore[method-assign]
+
+        with (
+            caplog.at_level("WARNING", logger="provena.aggregator"),
+            pytest.raises(OSError, match="planner disk full"),
+        ):
+            agg.close()
+
+        assert "executor already closed" in caplog.text
+        assert reviewer._backend._conn is None
+
+
 class TestAggregatedSummary:
     def test_summary_totals(self, populated_aggregator):
         s = populated_aggregator.summary()

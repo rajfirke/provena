@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Fixed
+
+- **`TrailAggregator.close()` now closes every registered trail even if one raises**, matching the `try/finally` protection `ContextTrail.close()` already has (#144). Previously, one trail's `close()` raising would stop the loop early and leak the backends of every trail registered after it. The first exception is now raised after all trails have had a chance to close; any additional exceptions are logged instead of being silently dropped (#177)
+
 ## [1.2.0] - 2026-09-07
 
 ### Added

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from provena.models import ChainVerdict, ContextSource
+
+_logger = logging.getLogger("provena.aggregator")
 
 
 @dataclass(frozen=True, slots=True)
@@ -436,9 +439,28 @@ class TrailAggregator:
         return tuple(h for h in self._handoffs if h.run_id == run_id)
 
     def close(self) -> None:
-        """Close all registered trails."""
+        """Close all registered trails.
+
+        Closing continues even if a trail raises, so one failing trail
+        cannot leak the backends of the trails registered after it. If any
+        trail failed to close, the first exception is raised after every
+        trail has had a chance to close; any additional exceptions are
+        logged rather than dropped silently.
+        """
+        errors: list[Exception] = []
         for trail in self._trails.values():
-            trail.close()
+            try:
+                trail.close()
+            except Exception as exc:
+                errors.append(exc)
+
+        if errors:
+            for extra_error in errors[1:]:
+                _logger.warning(
+                    "Trail close() raised during aggregator shutdown",
+                    exc_info=extra_error,
+                )
+            raise errors[0]
 
     def __enter__(self) -> TrailAggregator:
         return self
