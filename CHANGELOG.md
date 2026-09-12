@@ -9,11 +9,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Fixed
 
 - **`PolicyEngine.from_config()` now accepts a `_signed_ref` to wire `require_signing` to the trail's real signing state.** Previously, calling `from_config()` standalone (without a `ContextTrail` to patch it afterward) built a `require_signing` policy stuck on its `[False]` default, so a `block`-level `require_signing` check would deny every record regardless of whether the trail was signed. `ContextTrail(config=...)` now passes its own signing state through directly instead of relying solely on the post-construction patch (#141)
+- **`TrailAggregator.close()` now closes every registered trail even if one raises**, matching the `try/finally` protection `ContextTrail.close()` already has (#144). Previously, one trail's `close()` raising would stop the loop early and leak the backends of every trail registered after it. The first exception is now raised after all trails have had a chance to close; any additional exceptions are logged instead of being silently dropped (#177)
 
 ## [1.2.0] - 2026-09-07
 
 ### Added
 
+- **`provena audit` gains a `--run-id` filter**, allowing a workflow execution
+  to be inspected through its records. The filter is supported by SQLite,
+  PostgreSQL, and in-memory storage backends, and matches the `run_id` stored
+  in each record's metadata (#151)
 - **`provena audit` gains `--provenance-status` and `--freshness-status`
   filters**, exposing the `trail.query()` filters that were already supported
   by the API. Values are case-insensitive, and an unrecognized status is
