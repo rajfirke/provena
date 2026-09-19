@@ -757,9 +757,10 @@ class ContextTrail:
             A dictionary with total count, provenance/freshness/source
             breakdowns, and signing status.
         """
-        records = self._backend.all_records()
         if self._buffer:
-            records = records + self._buffer.pending_records
+            records = self._buffer.full_snapshot()
+        else:
+            records = self._backend.all_records()
         total = len(records)
         if total == 0:
             return {
