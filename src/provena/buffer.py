@@ -19,6 +19,7 @@ _prev_sigterm_handler: Any = None
 
 class _Appendable(Protocol):
     def append(self, record: dict[str, Any]) -> int: ...
+    def all_records(self) -> list[dict[str, Any]]: ...
 
 
 class WriteBuffer:
@@ -66,6 +67,18 @@ class WriteBuffer:
         """Snapshot of records waiting to be flushed."""
         with self._lock:
             return list(self._buffer)
+
+    def full_snapshot(self) -> list[dict[str, Any]]:
+        """Backend records plus pending records, as of one consistent instant.
+
+        Holds this buffer's lock across both reads. The background flush
+        thread can only move a record from the pending buffer into the
+        backend while holding this same lock, so a caller using this method
+        instead of separately reading ``backend.all_records()`` and
+        ``pending_records`` can never observe a record in neither snapshot.
+        """
+        with self._lock:
+            return self._backend.all_records() + list(self._buffer)
 
     def append(self, record: dict[str, Any]) -> None:
         """Append a record to the buffer. Triggers flush if buffer is full."""
