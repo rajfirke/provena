@@ -287,6 +287,33 @@ class TestContextTrailBuffered:
         assert verdict.total_records == 20
         trail.close()
 
+    def test_verify_chain_intact_after_transient_flush_failure(self):
+        trail = ContextTrail(
+            backend="memory", buffered=True, buffer_size=100, flush_interval=60
+        )
+        real_append = trail._backend.append
+        failing = {"on": True}
+
+        def flaky_append(record):
+            if failing["on"]:
+                raise OSError("simulated backend outage")
+            return real_append(record)
+
+        trail._backend.append = flaky_append  # type: ignore[method-assign]
+
+        trail.log("record 1", source="tool")
+        assert trail.flush() == 0  # failed; record stays queued, not dropped
+        assert trail._buffer.pending == 1
+
+        failing["on"] = False
+        trail.log("record 2", source="tool")
+        assert trail.flush() == 2  # both flush together once the backend recovers
+
+        verdict = trail.verify_chain()
+        assert verdict.intact
+        assert verdict.total_records == 2
+        trail.close()
+
     def test_buffered_auto_flush_on_full(self):
         trail = ContextTrail(
             backend="memory", buffered=True, buffer_size=5, flush_interval=60
