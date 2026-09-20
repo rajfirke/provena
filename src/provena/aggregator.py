@@ -241,7 +241,6 @@ class TrailAggregator:
             targets = self._trails
 
         results: list[dict[str, Any]] = []
-        per_trail_limit = max(1, limit // max(len(targets), 1))
 
         for label, trail in targets.items():
             records = trail.query(
@@ -250,7 +249,7 @@ class TrailAggregator:
                 end=end,
                 provenance_status=provenance_status,
                 freshness_status=freshness_status,
-                limit=per_trail_limit,
+                limit=limit,
             )
             for r in records:
                 r["_trail"] = label

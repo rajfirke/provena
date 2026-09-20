@@ -237,6 +237,24 @@ class TestAggregatedQuery:
         timestamps = [r.get("timestamp", "") for r in records]
         assert timestamps == sorted(timestamps)
 
+    def test_query_limit_not_under_fetched_with_uneven_distribution(self):
+        agg = TrailAggregator()
+        empty_trails = [ContextTrail(backend="memory") for _ in range(9)]
+        for i, trail in enumerate(empty_trails):
+            agg.add(f"empty{i}", trail)
+
+        busy = ContextTrail(backend="memory")
+        for i in range(100):
+            busy.log(f"record{i}", source="retriever")
+        agg.add("busy", busy)
+
+        records = agg.query(limit=100)
+        assert len(records) == 100
+
+        for trail in empty_trails:
+            trail.close()
+        busy.close()
+
 
 class TestChainVerification:
     def test_verify_all_intact(self, populated_aggregator):
