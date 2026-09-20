@@ -62,6 +62,7 @@ nav:
     - LangChain: integrations/langchain.md
     - LlamaIndex: integrations/llamaindex.md
     - OpenTelemetry: integrations/opentelemetry.md
+    - MCP Governance Server: integrations/mcp.md
     - CLI Reference: integrations/cli.md
   - Compliance:
     - EU AI Act: compliance/eu-ai-act.md

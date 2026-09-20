@@ -186,4 +186,5 @@ provena --db audit.db summary
 - [Freshness Checking](guide/freshness.md) — Temporal detection patterns
 - [Chain Verification](guide/verification.md) — HMAC signing and tamper detection
 - [LangChain Integration](integrations/langchain.md) — Add governance to existing chains
+- [MCP Governance Server](integrations/mcp.md) — Let agents inspect a recorded trail
 - [CLI Reference](integrations/cli.md) — All commands and options
