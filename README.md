@@ -53,7 +53,7 @@ pip install provena                # core (zero dependencies)
 pip install provena[cli]           # + CLI tools (click, rich)
 pip install provena[otel]          # + OpenTelemetry export
 pip install provena[postgres]      # + PostgreSQL backend
-pip install provena[mcp]           # + MCP server for governance-aware agents
+pip install "provena[mcp,cli]"     # + MCP server and CLI command
 pip install provena[pdf]           # + PDF compliance reports
 pip install provena[yaml]          # + YAML config file support
 pip install provena[all]           # core + cli + otel + postgres + mcp + pdf + yaml
