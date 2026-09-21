@@ -4,17 +4,22 @@ site_description: Context governance for agentic AI systems
 repo_url: https://github.com/rajfirke/provena
 repo_name: rajfirke/provena
 edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Raj Firke &mdash; Apache 2.0
 
 theme:
   name: material
+  icon:
+    logo: material/shield-lock
   palette:
     - scheme: default
       primary: indigo
+      accent: indigo
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
       primary: indigo
+      accent: indigo
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -22,10 +27,21 @@ theme:
     - navigation.sections
     - navigation.expand
     - navigation.top
+    - navigation.footer
     - content.code.copy
     - content.code.annotate
     - search.highlight
     - search.suggest
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/rajfirke/provena
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/provena/
 
 plugins:
   - search
@@ -71,12 +87,16 @@ nav:
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - pymdownx.details
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
-  - attr_list
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - toc:
       permalink: true
