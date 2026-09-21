@@ -320,6 +320,67 @@ class TestHandoffTracking:
         s = populated_aggregator.summary()
         assert s["handoffs"] == 1
 
+    def test_record_handoff_rejects_provisional_ids(self):
+        from provena.trail import ContextTrail
+
+        agg = TrailAggregator()
+
+        # Force buffered mode
+        planner = ContextTrail(backend="memory", buffered=True)
+        executor = ContextTrail(backend="memory", buffered=True)
+        agg.add("planner", planner)
+        agg.add("executor", executor)
+
+        # Log records. They will be buffered and return id=-1
+        r1 = planner.log("plan text", source="agent")
+        r2 = executor.log("execute text", source="agent")
+
+        assert r1.id == -1
+        assert r2.id == -1
+
+        # Prove that the aggregator actively defends itself from provisional IDs
+        with pytest.raises(ValueError, match="from_record_id must be >= 1"):
+            agg.record_handoff("planner", r1.id, "executor", 99)
+
+        with pytest.raises(ValueError, match="to_record_id must be >= 1"):
+            agg.record_handoff("planner", 99, "executor", r2.id)
+
+        # Prove the developer's fix (flushing generates real IDs that succeed)
+        planner.flush()
+        executor.flush()
+
+        real_r1 = planner.last_record
+        real_r2 = executor.last_record
+
+        edge = agg.record_handoff("planner", real_r1["id"], "executor", real_r2["id"])
+        assert edge.from_record_id > 0
+        assert edge.to_record_id > 0
+
+        agg.close()
+
+    def test_record_handoff_red_team_defenses(self):
+        import math
+
+        agg = TrailAggregator()
+
+        # 1. Test Type Bypass Defenses
+        with pytest.raises(TypeError, match="strict integers"):
+            agg.record_handoff("planner", math.nan, "executor", 1)  # type: ignore
+        with pytest.raises(TypeError, match="strict integers"):
+            agg.record_handoff("planner", 1, "executor", 1.5)  # type: ignore
+        with pytest.raises(TypeError, match="strict integers"):
+            agg.record_handoff("planner", True, "executor", 1)  # type: ignore
+
+        # 2. Test Self-Referential Cycle Defenses
+        with pytest.raises(ValueError, match="Self-referential"):
+            agg.record_handoff("planner", 5, "planner", 5)
+
+        # 3. Test Circuit Breaker Defenses
+        agg._handoffs = [None] * 100_000  # type: ignore
+
+        with pytest.raises(RuntimeError, match="capacity exceeded"):
+            agg.record_handoff("planner", 1, "executor", 2)
+
 
 class TestTimeline:
     def test_timeline_sorted(self, populated_aggregator):

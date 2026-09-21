@@ -149,6 +149,28 @@ class TrailAggregator:
         Returns:
             The created HandoffEdge.
         """
+        if len(self._handoffs) >= 100_000:
+            raise RuntimeError("Aggregator handoff capacity exceeded (100,000 max).")
+
+        if type(from_record_id) is not int or type(to_record_id) is not int:
+            raise TypeError("Record IDs must be strict integers.")
+
+        if from_trail == to_trail and from_record_id == to_record_id:
+            raise ValueError("Self-referential handoffs are not allowed.")
+
+        if from_record_id < 1:
+            raise ValueError(
+                f"from_record_id must be >= 1, got {from_record_id}. In buffered mode "
+                "log() returns TrailRecord(id=-1) until the record is "
+                "flushed; call flush(), then read the persisted id."
+            )
+        if to_record_id < 1:
+            raise ValueError(
+                f"to_record_id must be >= 1, got {to_record_id}. In buffered mode "
+                "log() returns TrailRecord(id=-1) until the record is "
+                "flushed; call flush(), then read the persisted id."
+            )
+
         edge = HandoffEdge(
             from_trail=from_trail,
             from_record_id=from_record_id,

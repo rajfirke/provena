@@ -21,6 +21,7 @@ from provena import ContextTrail
 
 trail = ContextTrail(storage_path="audit.db")
 
+
 @trail.track(source="retriever")
 def search(query):
     return retriever.search(query)
@@ -78,13 +79,16 @@ from datetime import datetime, timezone
 
 trail = ContextTrail(storage_path="audit.db")
 
+
 @trail.track(source="retriever")
 def search(query):
     return retriever.search(query)
 
+
 @trail.track(source="tool:pricing_api")
 def get_price(product_id):
     return api.get(f"/price/{product_id}")
+
 
 # Manual logging with full provenance
 trail.log(
@@ -135,14 +139,17 @@ trail = ContextTrail(
     ],
 )
 
+
 @trail.track(source="retriever")
 def fetch_docs(query):
     # Returns a list — Provena extracts provenance per document
     return vector_db.search(query)
 
+
 @trail.track(source="tool:web_search")
 def web_search(query):
     return search_api.get(query)
+
 
 # --- Run the pipeline ---
 
