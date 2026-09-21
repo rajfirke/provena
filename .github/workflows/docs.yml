@@ -8,6 +8,8 @@ on:
       - "mkdocs.yml"
       - "scripts/gen_ref_pages.py"
       - "src/provena/**"
+      - "pyproject.toml"
+      - ".github/workflows/docs.yml"
   pull_request:
     branches: [main]
     paths:
@@ -15,33 +17,48 @@ on:
       - "mkdocs.yml"
       - "scripts/gen_ref_pages.py"
       - "src/provena/**"
+      - "pyproject.toml"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Setup Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
       - name: Install dependencies
         run: pip install -e ".[docs]"
       - name: Build docs (strict)
         run: mkdocs build --strict
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
 
   deploy:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
+    needs: build
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: pip install -e ".[docs]"
       - name: Deploy to GitHub Pages
-        run: mkdocs gh-deploy --force
+        id: deployment
+        uses: actions/deploy-pages@v5

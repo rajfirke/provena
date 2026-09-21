@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation now publishes to GitHub Pages with Actions artifact deploy (`upload-pages-artifact` + `deploy-pages`) instead of `mkdocs gh-deploy`
+- Docs homepage is a project landing page with feature cards, comparison table, and CTAs
+
 ### Fixed
 
 - **`PolicyEngine.from_config()` now accepts a `_signed_ref` to wire `require_signing` to the trail's real signing state.** Previously, calling `from_config()` standalone (without a `ContextTrail` to patch it afterward) built a `require_signing` policy stuck on its `[False]` default, so a `block`-level `require_signing` check would deny every record regardless of whether the trail was signed. `ContextTrail(config=...)` now passes its own signing state through directly instead of relying solely on the post-construction patch (#141)
