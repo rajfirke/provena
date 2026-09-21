@@ -95,6 +95,42 @@ class TestWriteBuffer:
         assert buf.flush() == 0
         buf.close()
 
+    def test_flush_retries_after_transient_failure(self):
+        backend = InMemoryBackend()
+        real_append = backend.append
+        calls = {"count": 0}
+
+        def flaky_append(record):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise OSError("simulated backend outage")
+            return real_append(record)
+
+        backend.append = flaky_append  # type: ignore[method-assign]
+
+        buf = WriteBuffer(backend, buffer_size=100, flush_interval=60)
+        buf.append(
+            {
+                "content_hash": "a",
+                "source": "r",
+                "source_name": "t",
+                "timestamp": "2026-07-20T00:00:00Z",
+                "chain_hash": "c",
+                "previous_hash": "p",
+            }
+        )
+
+        # First flush attempt fails; the record must stay in the buffer
+        # rather than being dropped.
+        assert buf.flush() == 0
+        assert buf.pending == 1
+        assert backend.count() == 0
+
+        # Second flush attempt succeeds now that the backend has recovered.
+        assert buf.flush() == 1
+        assert buf.pending == 0
+        assert backend.count() == 1
+
     def test_full_snapshot_includes_backend_and_pending(self):
         backend = InMemoryBackend()
         buf = WriteBuffer(backend, buffer_size=100, flush_interval=60)
