@@ -38,6 +38,8 @@ try:
             nodes: list[NodeWithScore],
             query_bundle: QueryBundle | None = None,
         ) -> list[NodeWithScore]:
+            if not isinstance(nodes, list):
+                nodes = list(nodes)
             for node_with_score in nodes:
                 node = node_with_score.node
                 content = getattr(node, "text", None)
@@ -45,10 +47,12 @@ try:
                     content = str(node)
                 provenance = _extract_llamaindex_provenance(node)
                 metadata: dict[str, Any] = {}
-                if node_with_score.score is not None:
+                if getattr(node_with_score, "score", None) is not None:
                     metadata["score"] = node_with_score.score
                 if query_bundle:
-                    metadata["query"] = query_bundle.query_str
+                    query_str = getattr(query_bundle, "query_str", None)
+                    if query_str is not None:
+                        metadata["query"] = query_str
                 self.trail.log(
                     content=content,
                     source=ContextSource.RETRIEVER,
@@ -74,16 +78,23 @@ def _extract_llamaindex_provenance(node: Any) -> ProvenanceMetadata | None:
     meta = getattr(node, "metadata", None)
     if not isinstance(meta, dict):
         return None
-    created_at = _parse_datetime(
-        meta.get("created_at")
-        or meta.get("date")
-        or meta.get("last_modified_date")
-        or meta.get("creation_date")
-    )
+
+    created_at_val = None
+    for key in ("created_at", "date", "last_modified_date", "creation_date"):
+        if meta.get(key) is not None:
+            created_at_val = meta.get(key)
+            break
+
+    source_val = None
+    for key in ("source", "file_path"):
+        if meta.get(key) is not None:
+            source_val = meta.get(key)
+            break
+
     return ProvenanceMetadata(
-        source_url=meta.get("source") or meta.get("file_path"),
+        source_url=source_val,
         author=meta.get("author"),
-        created_at=created_at,
+        created_at=_parse_datetime(created_at_val),
     )
 
 

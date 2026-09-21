@@ -184,6 +184,100 @@ except ImportError:
     pass
 
 
+@pytest.mark.skipif(not _has_llamaindex, reason="llama-index-core not installed")
+class TestProvenaPostprocessorLlamaIndex:
+    def test_postprocess_nodes_logs_to_trail(self):
+        import json
+
+        trail = ContextTrail(backend="memory")
+        postprocessor = ProvenaPostprocessor(trail=trail)
+
+        # 1. Create mock NodeWithScore objects
+        node1 = MockLlamaIndexNode(
+            "Text chunk 1", {"source": "manual.pdf", "author": "Alice"}
+        )
+        node2 = MockLlamaIndexNode("Text chunk 2", {"file_path": "/var/data.txt"})
+
+        nodes = [
+            MockNodeWithScore(node1, score=0.95),
+            MockNodeWithScore(node2, score=0.82),
+        ]
+        query = MockQueryBundle("how does it work?")
+
+        # 2. Call _postprocess_nodes
+        result = postprocessor._postprocess_nodes(nodes, query)
+
+        # 3. Assert pass-through behavior
+        assert result is nodes
+        assert len(result) == 2
+
+        # 4. Assert trail logs
+        s = trail.summary()
+        assert s["total"] == 2
+        assert s["sources"]["retriever"] == 2
+
+        # 5. Assert provenance and metadata extraction
+        records = trail.query()
+        assert len(records) == 2
+
+        # Verify Node 1 (has score and query metadata)
+        prov1 = json.loads(records[0]["provenance_json"])
+        meta1 = json.loads(records[0]["metadata_json"])
+        assert prov1["source_url"] == "manual.pdf"
+        assert prov1["author"] == "Alice"
+        assert meta1["score"] == 0.95
+        assert meta1["query"] == "how does it work?"
+
+        # Verify Node 2
+        prov2 = json.loads(records[1]["provenance_json"])
+        assert prov2["source_url"] == "/var/data.txt"
+
+        trail.close()
+
+    def test_postprocess_red_team_vectors(self):
+        import json
+        from types import SimpleNamespace
+
+        trail = ContextTrail(backend="memory")
+        postprocessor = ProvenaPostprocessor(trail=trail)
+
+        # 1. Malicious Truthiness Object (Simulates a Pandas DataFrame)
+        class MaliciousTruthiness:
+            def __bool__(self):
+                raise ValueError("Truth value is ambiguous")
+
+        # 2. Generator instead of a List
+        def node_generator():
+            malicious_meta = {
+                "created_at": MaliciousTruthiness(),
+                "date": "2023-01-01",
+                "source": "safe.pdf",
+            }
+            yield MockNodeWithScore(MockLlamaIndexNode("text", malicious_meta))
+            yield MockNodeWithScore(MockLlamaIndexNode("text 2", {}))
+
+        nodes = node_generator()
+
+        # 3. Malformed Query Bundle
+        bad_query = SimpleNamespace(wrong_attr="test")
+
+        # Execute (Should not crash!)
+        result = postprocessor._postprocess_nodes(nodes, bad_query)
+
+        # Verify Iterator Exhaustion was prevented
+        assert isinstance(result, list)
+        assert len(result) == 2
+
+        # Verify Truthiness crash was avoided.
+        # Since created_at was MaliciousTruthiness, it safely evaluated to None and was omitted.
+        records = trail.query()
+        prov = json.loads(records[0]["provenance_json"])
+        assert prov["source_url"] == "safe.pdf"
+        assert prov.get("created_at") is None
+
+        trail.close()
+
+
 class TestProvenaPostprocessorImportError:
     @pytest.mark.skipif(_has_llamaindex, reason="llama-index IS installed")
     def test_raises_import_error_without_llamaindex(self):
