@@ -380,7 +380,7 @@ class TestMCPToolFunctions:
 
 class TestMCPCLI:
     @pytest.mark.skipif(not _has_fastmcp, reason="fastmcp not installed")
-    def test_mcp_serve_with_fastmcp(self, monkeypatch):
+    def test_mcp_serve_with_fastmcp(self, monkeypatch, tmp_path):
         import fastmcp
         from click.testing import CliRunner
 
@@ -389,9 +389,13 @@ class TestMCPCLI:
         # Prevent FastMCP from taking over stdio streams during CLI testing
         monkeypatch.setattr(fastmcp.FastMCP, "run", lambda self, transport=None: None)
 
+        # serve refuses to create a missing SQLite file, so the path must exist.
+        db_path = tmp_path / "audit.db"
+        db_path.write_bytes(b"")
+
         runner = CliRunner()
-        result = runner.invoke(cli, ["mcp", "serve"])
-        assert result.exit_code == 0
+        result = runner.invoke(cli, ["--db", str(db_path), "mcp", "serve"])
+        assert result.exit_code == 0, result.output
 
     def test_mcp_help(self):
         from click.testing import CliRunner
