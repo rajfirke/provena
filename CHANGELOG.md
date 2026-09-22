@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-22
+
+### Added
+
+- **`provena audit` gains a `--run-id` filter**, allowing a workflow execution
+  to be inspected through its records. The filter is supported by SQLite,
+  PostgreSQL, and in-memory storage backends, and matches the `run_id` stored
+  in each record's metadata. This landed after the v1.2.0 tag, so 1.2.0
+  installs do not include it (#151, #169)
+- **MCP governance server guide** on the docs site (#188)
+
 ### Changed
 
 - Documentation now publishes to GitHub Pages with Actions artifact deploy (`upload-pages-artifact` + `deploy-pages`) instead of `mkdocs gh-deploy`
@@ -15,17 +26,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - **`PolicyEngine.from_config()` now accepts a `_signed_ref` to wire `require_signing` to the trail's real signing state.** Previously, calling `from_config()` standalone (without a `ContextTrail` to patch it afterward) built a `require_signing` policy stuck on its `[False]` default, so a `block`-level `require_signing` check would deny every record regardless of whether the trail was signed. `ContextTrail(config=...)` now passes its own signing state through directly instead of relying solely on the post-construction patch (#141)
 - **`TrailAggregator.close()` now closes every registered trail even if one raises**, matching the `try/finally` protection `ContextTrail.close()` already has (#144). Previously, one trail's `close()` raising would stop the loop early and leak the backends of every trail registered after it. The first exception is now raised after all trails have had a chance to close; any additional exceptions are logged instead of being silently dropped (#177)
-- **`ContextTrail.summary()` no longer undercounts under concurrent flush in buffered mode.** It previously read `backend.all_records()` and `buffer.pending_records` as two separate, unlocked snapshots — if the background flush thread moved a record from the buffer into the backend between those two reads, that record appeared in neither and was silently missing from the total. `summary()` now reads both through a new `WriteBuffer.full_snapshot()`, which holds the buffer's lock across both reads so a concurrent flush cannot run in between (#176)
-- **`TrailAggregator.query()` no longer under-fetches when data is unevenly distributed across trails.** It previously divided `limit` evenly across every registered trail before querying (`limit // trail_count`), so a `query(limit=100)` against 9 empty trails and 1 trail holding 100 records returned only 10 — the one trail with data was capped at its 1/10th share before the results were even merged. Each trail is now queried for the full `limit`; the merge-sort-truncate step already handled the final cap correctly. `timeline()`, which delegates to `query()`, is fixed as a side effect (#51)
+- **`ContextTrail.summary()` no longer undercounts under concurrent flush in buffered mode.** It previously read `backend.all_records()` and `buffer.pending_records` as two separate, unlocked snapshots. If the background flush thread moved a record from the buffer into the backend between those two reads, that record appeared in neither and was silently missing from the total. `summary()` now reads both through `WriteBuffer.full_snapshot()`, which holds the buffer's lock across both reads so a concurrent flush cannot run in between (#176)
+- **`TrailAggregator.query()` no longer under-fetches when data is unevenly distributed across trails.** It previously divided `limit` evenly across every registered trail before querying (`limit // trail_count`), so a `query(limit=100)` against 9 empty trails and 1 trail holding 100 records returned only 10. Each trail is now queried for the full `limit`; the merge-sort-truncate step already handled the final cap correctly. `timeline()`, which delegates to `query()`, is fixed as a side effect (#51)
+- **`TrailAggregator.record_handoff()` rejects provisional buffered ids** (`id < 1`) instead of recording a handoff that can never resolve (#191)
+- **LlamaIndex provenance extraction no longer uses boolean `or` on metadata.** An object with an ambiguous truth value (for example a one-row DataFrame) no longer crashes the postprocessor; the first present key is taken explicitly (#30, #189)
+- **LangChain provenance extraction uses the same explicit key walk.** `created_at`, `date`, `source`, and `source_url` are accepted only when they are a string or a real datetime, so a later usable value is not hidden by an earlier ambiguous object
+- **Buffered `ContextTrail.query()` includes unflushed rows.** Pending buffer records were visible to `summary()` and `record_count` but missing from `query()`, so CLI and MCP filters under-counted until the next flush. Unflushed rows are returned with `id=-1`
+- **`provena mcp serve` honors `--config` and refuses a missing SQLite file.** It previously built `ContextTrail(storage_path=...)` directly, ignored policies and storage settings from `--config`, and created an empty database when the path was a typo. An explicit root `--db` is no longer overwritten by `PROVENA_DB` on the serve option
+- **`provena migrate` fails when the SQLite source path does not exist** instead of creating that file and reporting an empty successful migration. An existing empty database still reports that there is nothing to migrate
+- **`WriteBuffer` uses an `RLock` and chains the previous `SIGTERM` handler.** The non-reentrant lock could deadlock when the signal handler flushed while the main thread already held the lock, and installing the handler used to discard a handler the process already had
+- **`InMemoryBackend.count()` and `all_records()` hold the backend lock**, matching the other read methods, so `verify_chain()` does not observe a torn in-memory list
+- **`_handle_error` re-raises with `raise exc`** so strict mode surfaces the captured exception even when the helper is not itself inside an `except` block
+- **`provena stats` labels empty provenance and freshness segments** as `none` instead of printing consecutive empty pipe separators
 
 ## [1.2.0] - 2026-09-07
 
 ### Added
 
-- **`provena audit` gains a `--run-id` filter**, allowing a workflow execution
-  to be inspected through its records. The filter is supported by SQLite,
-  PostgreSQL, and in-memory storage backends, and matches the `run_id` stored
-  in each record's metadata (#151)
 - **`provena audit` gains `--provenance-status` and `--freshness-status`
   filters**, exposing the `trail.query()` filters that were already supported
   by the API. Values are case-insensitive, and an unrecognized status is
