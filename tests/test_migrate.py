@@ -56,6 +56,18 @@ class TestMigrateSQLiteToSQLite:
         assert result.exit_code == 0
         assert "empty" in result.output.lower()
 
+    def test_migrate_missing_source_is_an_error(self, tmp_path):
+        missing = tmp_path / "does-not-exist.db"
+        dst_path = str(tmp_path / "dest.db")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["migrate", "--from", str(missing), "--to", dst_path]
+        )
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower()
+        assert not missing.exists()
+
     def test_migrate_preserves_metadata(self, tmp_path):
         src_path = str(tmp_path / "source.db")
         dst_path = str(tmp_path / "dest.db")

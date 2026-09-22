@@ -71,6 +71,26 @@ class TestExtractLangChainProvenance:
         assert prov.source_url is None
         assert prov.author is None
 
+    def test_ambiguous_truthiness_does_not_raise(self):
+        class MaliciousTruthiness:
+            def __bool__(self):
+                raise ValueError("Truth value is ambiguous")
+
+        doc = MockLangChainDocument(
+            "text",
+            {
+                "created_at": MaliciousTruthiness(),
+                "date": "2023-01-01T00:00:00+00:00",
+                "source": MaliciousTruthiness(),
+                "source_url": "https://example.com/safe",
+            },
+        )
+        prov = _extract_langchain_provenance(doc)
+        assert prov is not None
+        assert prov.source_url == "https://example.com/safe"
+        assert prov.created_at is not None
+        assert prov.created_at.year == 2023
+
 
 class TestExtractLlamaIndexProvenance:
     def test_with_source_metadata(self):

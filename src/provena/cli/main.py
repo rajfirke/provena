@@ -372,6 +372,24 @@ def mcp() -> None:
 @click.pass_context
 def serve(ctx: click.Context, db: str | None, transport: str) -> None:
     """Start the Provena MCP governance server."""
+    root = ctx.find_root()
+    # Both this option and the root --db read PROVENA_DB. Only an explicit
+    # `mcp serve --db` should override the root path; an env-filled value
+    # must not clobber `provena --db PATH mcp serve`.
+    if (
+        db is not None
+        and ctx.get_parameter_source("db") is click.core.ParameterSource.COMMANDLINE
+    ):
+        root.obj["db"] = db
+
+    # Reject a missing SQLite path before importing the MCP extra, so a typo
+    # does not depend on fastmcp and does not create an empty database.
+    config_path = root.obj.get("config_path")
+    db_path = root.obj.get("db", "provena.db")
+    if not config_path and not _is_pg_url(db_path) and not os.path.exists(db_path):
+        click.echo(f"Database not found: {db_path}", err=True)
+        ctx.exit(1)
+
     try:
         from provena.mcp_server import configure, create_server
     except ImportError:
@@ -383,10 +401,9 @@ def serve(ctx: click.Context, db: str | None, transport: str) -> None:
         ctx.exit(1)
         return
 
-    db_path = db or ctx.parent.parent.obj.get("db", "provena.db")  # type: ignore[union-attr]
-    signing_key = ctx.parent.parent.obj.get("signing_key")  # type: ignore[union-attr]
-
-    trail = ContextTrail(storage_path=db_path, signing_key=signing_key)
+    # Same trail binding as every other command: --config (policies, storage,
+    # signing) wins over a bare storage path.
+    trail, _ = _open_trail(root)
     try:
         configure(trail)
         server = create_server()
@@ -423,6 +440,9 @@ def migrate(
     batch_size: int,
 ) -> None:
     """Migrate trail data between storage backends."""
+    if not _is_pg_url(from_path) and not os.path.exists(from_path):
+        click.echo(f"Source database not found: {from_path}", err=True)
+        ctx.exit(1)
     src = _open_backend(from_path)
     dst = _open_backend(to_path)
     try:

@@ -81,17 +81,38 @@ except ImportError:
             )
 
 
+def _first_str(meta: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    """Return the first string metadata value among ``keys``.
+
+    Non-strings are skipped without calling ``__bool__``, so an ambiguous
+    truthiness object cannot raise or hide a later usable string.
+    """
+    for key in keys:
+        value = meta.get(key)
+        if isinstance(value, str):
+            return value
+    return None
+
+
+def _first_datetime(meta: dict[str, Any], keys: tuple[str, ...]) -> datetime | None:
+    """Return the first metadata value among ``keys`` that parses as a datetime."""
+    for key in keys:
+        if key not in meta:
+            continue
+        parsed = _parse_datetime(meta[key])
+        if parsed is not None:
+            return parsed
+    return None
+
+
 def _extract_langchain_provenance(doc: Any) -> ProvenanceMetadata | None:
     meta = getattr(doc, "metadata", None)
     if not isinstance(meta, dict):
         return None
-    created_at = _parse_datetime(
-        meta.get("created_at") or meta.get("date") or meta.get("last_modified")
-    )
     return ProvenanceMetadata(
-        source_url=meta.get("source") or meta.get("source_url"),
-        author=meta.get("author"),
-        created_at=created_at,
+        source_url=_first_str(meta, ("source", "source_url")),
+        author=meta.get("author") if isinstance(meta.get("author"), str) else None,
+        created_at=_first_datetime(meta, ("created_at", "date", "last_modified")),
     )
 
 

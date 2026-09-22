@@ -972,15 +972,120 @@ class TestCLIMcpServe:
         monkeypatch.setattr(mcp_mod, "create_server", lambda: _FakeServer())
         return closed
 
-    def test_serve_closes_trail_on_normal_return(self, monkeypatch):
+    def test_serve_closes_trail_on_normal_return(self, monkeypatch, tmp_path):
         closed = self._patch(monkeypatch)
-        result = CliRunner().invoke(cli, ["mcp", "serve"])
+        db_path = tmp_path / "audit.db"
+        db_path.write_bytes(b"")
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "mcp", "serve"])
         assert result.exit_code == 0
         assert closed["count"] == 1
 
-    def test_serve_closes_trail_on_exception(self, monkeypatch):
+    def test_serve_closes_trail_on_exception(self, monkeypatch, tmp_path):
         closed = self._patch(monkeypatch, run_side_effect=RuntimeError("boom"))
-        result = CliRunner().invoke(cli, ["mcp", "serve"])
+        db_path = tmp_path / "audit.db"
+        db_path.write_bytes(b"")
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "mcp", "serve"])
         assert result.exit_code != 0
         assert isinstance(result.exception, RuntimeError)
         assert closed["count"] == 1
+
+    def test_serve_missing_database_does_not_create_file(self, tmp_path):
+        missing = tmp_path / "missing.db"
+        result = CliRunner().invoke(cli, ["--db", str(missing), "mcp", "serve"])
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower()
+        assert not missing.exists()
+
+    def test_serve_honors_config(self, monkeypatch, tmp_path):
+        import provena.cli.main as main_mod
+        import provena.mcp_server as mcp_mod
+
+        seen: dict[str, object] = {}
+
+        class _FakeTrail:
+            def __init__(self, *args, **kwargs):
+                seen["kwargs"] = kwargs
+
+            def close(self):
+                pass
+
+        class _FakeServer:
+            def run(self, transport="stdio"):
+                return None
+
+        monkeypatch.setattr(main_mod, "ContextTrail", _FakeTrail)
+        monkeypatch.setattr(mcp_mod, "configure", lambda trail: None)
+        monkeypatch.setattr(mcp_mod, "create_server", lambda: _FakeServer())
+
+        config_path = tmp_path / "provena.toml"
+        config_path.write_text('[storage]\nbackend = "memory"\n')
+        result = CliRunner().invoke(cli, ["--config", str(config_path), "mcp", "serve"])
+        assert result.exit_code == 0
+        assert seen["kwargs"] == {"config": str(config_path)}
+
+    def test_serve_explicit_root_db_wins_over_env(self, monkeypatch, tmp_path):
+        import provena.cli.main as main_mod
+        import provena.mcp_server as mcp_mod
+
+        seen: dict[str, object] = {}
+
+        class _FakeTrail:
+            def __init__(self, *args, **kwargs):
+                seen["kwargs"] = kwargs
+
+            def close(self):
+                pass
+
+        class _FakeServer:
+            def run(self, transport="stdio"):
+                return None
+
+        monkeypatch.setattr(main_mod, "ContextTrail", _FakeTrail)
+        monkeypatch.setattr(mcp_mod, "configure", lambda trail: None)
+        monkeypatch.setattr(mcp_mod, "create_server", lambda: _FakeServer())
+
+        root_db = tmp_path / "root.db"
+        env_db = tmp_path / "env.db"
+        root_db.write_bytes(b"")
+        env_db.write_bytes(b"")
+        monkeypatch.setenv("PROVENA_DB", str(env_db))
+        result = CliRunner().invoke(cli, ["--db", str(root_db), "mcp", "serve"])
+        assert result.exit_code == 0
+        assert seen["kwargs"] == {
+            "storage_path": str(root_db),
+            "signing_key": None,
+        }
+
+    def test_serve_command_db_overrides_root_db(self, monkeypatch, tmp_path):
+        import provena.cli.main as main_mod
+        import provena.mcp_server as mcp_mod
+
+        seen: dict[str, object] = {}
+
+        class _FakeTrail:
+            def __init__(self, *args, **kwargs):
+                seen["kwargs"] = kwargs
+
+            def close(self):
+                pass
+
+        class _FakeServer:
+            def run(self, transport="stdio"):
+                return None
+
+        monkeypatch.setattr(main_mod, "ContextTrail", _FakeTrail)
+        monkeypatch.setattr(mcp_mod, "configure", lambda trail: None)
+        monkeypatch.setattr(mcp_mod, "create_server", lambda: _FakeServer())
+
+        root_db = tmp_path / "root.db"
+        serve_db = tmp_path / "serve.db"
+        root_db.write_bytes(b"")
+        serve_db.write_bytes(b"")
+        result = CliRunner().invoke(
+            cli, ["--db", str(root_db), "mcp", "serve", "--db", str(serve_db)]
+        )
+        assert result.exit_code == 0
+        assert seen["kwargs"] == {
+            "storage_path": str(serve_db),
+            "signing_key": None,
+        }

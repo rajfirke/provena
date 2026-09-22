@@ -234,6 +234,37 @@ class TestContextTrailBuffered:
         assert trail.summary()["total"] == 2
         trail.close()
 
+    def test_buffered_query_includes_pending(self):
+        trail = ContextTrail(
+            backend="memory", buffered=True, buffer_size=100, flush_interval=60
+        )
+        trail.log("persisted", source="retriever")
+        trail.flush()
+        trail.log("pending-tool", source="tool", metadata={"run_id": "run-9"})
+        trail.log("pending-other", source="retriever")
+        assert trail._buffer is not None
+        assert trail._buffer.pending == 2
+
+        rows = trail.query()
+        assert len(rows) == 3
+        assert rows[0]["id"] == 1
+        assert rows[1]["id"] == -1
+        assert rows[1]["source"] == "tool"
+        assert rows[2]["source"] == "retriever"
+
+        tool_rows = trail.query(source="tool")
+        assert len(tool_rows) == 1
+        assert tool_rows[0]["source"] == "tool"
+
+        run_rows = trail.query(run_id="run-9")
+        assert len(run_rows) == 1
+        assert run_rows[0]["source"] == "tool"
+
+        page = trail.query(limit=1, offset=1)
+        assert len(page) == 1
+        assert page[0]["source"] == "tool"
+        trail.close()
+
     def test_buffered_close_flushes(self):
         trail = ContextTrail(
             backend="memory", buffered=True, buffer_size=100, flush_interval=60

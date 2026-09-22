@@ -682,22 +682,48 @@ class ContextTrail:
         offset: int = 0,
         run_id: str | None = None,
     ) -> list[dict[str, Any]]:
+        """Return trail rows matching the filters, oldest first.
+
+        When buffering is enabled, unflushed records are included. Those rows
+        have not been assigned a backend id yet and are returned with
+        ``id=-1``. Filters match ``InMemoryBackend.query`` (string timestamp
+        comparison, ``metadata_json.run_id``).
+        """
         if limit < 1:
             raise ValueError(f"limit must be >= 1, got {limit}")
         if offset < 0:
             raise ValueError(f"offset must be >= 0, got {offset}")
 
         source_str = source.value if isinstance(source, ContextSource) else source
-        return self._backend.query(
-            source=source_str,
-            start=start,
-            end=end,
-            provenance_status=provenance_status,
-            freshness_status=freshness_status,
-            limit=limit,
-            offset=offset,
-            run_id=run_id,
-        )
+        if self._buffer is None:
+            return self._backend.query(
+                source=source_str,
+                start=start,
+                end=end,
+                provenance_status=provenance_status,
+                freshness_status=freshness_status,
+                limit=limit,
+                offset=offset,
+                run_id=run_id,
+            )
+
+        # Buffered mode: pending rows are invisible to the backend until flush.
+        # full_snapshot holds the buffer lock across backend + pending so a
+        # record cannot vanish between the two reads (same contract as summary).
+        matched = [
+            _query_row(record)
+            for record in self._buffer.full_snapshot()
+            if _query_row_matches(
+                record,
+                source=source_str,
+                start=start,
+                end=end,
+                provenance_status=provenance_status,
+                freshness_status=freshness_status,
+                run_id=run_id,
+            )
+        ]
+        return matched[offset : offset + limit]
 
     def annotate(
         self,
@@ -936,6 +962,52 @@ def _resolve_signing_key(key: str | bytes | None) -> bytes | None:
     if isinstance(key, str):
         return key.encode("utf-8")
     return key
+
+
+def _query_row(record: dict[str, Any]) -> dict[str, Any]:
+    """Copy a snapshot row, marking unflushed buffer entries with id=-1."""
+    row = dict(record)
+    if "id" not in row:
+        row["id"] = -1
+    return row
+
+
+def _query_row_matches(
+    record: dict[str, Any],
+    *,
+    source: str | None,
+    start: datetime | None,
+    end: datetime | None,
+    provenance_status: str | None,
+    freshness_status: str | None,
+    run_id: str | None,
+) -> bool:
+    if source is not None and record.get("source") != source:
+        return False
+    timestamp = record.get("timestamp", "")
+    if start is not None and timestamp < start.isoformat():
+        return False
+    if end is not None and timestamp > end.isoformat():
+        return False
+    if (
+        provenance_status is not None
+        and record.get("provenance_status", "MISSING") != provenance_status
+    ):
+        return False
+    if (
+        freshness_status is not None
+        and record.get("freshness_status", "UNKNOWN") != freshness_status
+    ):
+        return False
+    if run_id is not None:
+        raw = record.get("metadata_json") or "{}"
+        try:
+            meta = json.loads(raw) if isinstance(raw, str) else raw
+        except json.JSONDecodeError:
+            return False
+        if not isinstance(meta, dict) or meta.get("run_id") != run_id:
+            return False
+    return True
 
 
 def _is_pg_url(path: str) -> bool:
