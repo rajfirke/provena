@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ProvenaCrewListener` now actually receives CrewAI events.** It imported from a module path CrewAI no longer has, never implemented `setup_listeners()` (the method CrewAI's `BaseEventListener` requires to register handlers on its event bus), and read a nonexistent `event.agent_name` attribute. A real `crew.kickoff()` run produced zero trail records with no error. Now imports from `crewai.events`, registers `ToolUsageFinishedEvent`/`AgentExecutionCompletedEvent` handlers via `setup_listeners()`, and reads the agent's name via `event.agent.role`. The `crewai` extra's minimum version is bumped to `>=1.0.0` — confirmed by direct install/inspection that no version between `0.80.0` and `0.98.0` has the class-based event API this adapter (in either its old or fixed form) depends on at all (#193)
+
 ## [1.3.0] - 2026-09-22
 
 ### Added
