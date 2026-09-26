@@ -150,39 +150,66 @@ class TestCrewAIImportError:
             ProvenaCrewListener(trail=ContextTrail(backend="memory"))
 
 
+class _FakeEventBus:
+    """Stands in for crewai_event_bus: records handlers by event type and
+    lets a test fire one exactly the way CrewAI's real bus would."""
+
+    def __init__(self) -> None:
+        self.handlers: dict[type, object] = {}
+
+    def on(self, event_type):
+        def decorator(handler):
+            self.handlers[event_type] = handler
+            return handler
+
+        return decorator
+
+    def emit(self, source, event) -> None:
+        handler = self.handlers.get(type(event))
+        if handler is None:
+            raise AssertionError(f"no handler registered for {type(event)}")
+        handler(source, event)
+
+
 @pytest.fixture
 def crew_listener_class(monkeypatch):
     module_name = "provena.integrations.crewai"
     previous_module = sys.modules.pop(module_name, None)
 
     crewai_mod = ModuleType("crewai")
-    utilities_mod = ModuleType("crewai.utilities")
-    events_mod = ModuleType("crewai.utilities.events")
-    agent_events_mod = ModuleType("crewai.utilities.events.agent_events")
-    base_listener_mod = ModuleType("crewai.utilities.events.base_event_listener")
-    tool_events_mod = ModuleType("crewai.utilities.events.tool_usage_events")
+    events_mod = ModuleType("crewai.events")
 
-    # Mock the classes expected by the adapter
-    agent_events_mod.AgentExecutionCompletedEvent = object
-    base_listener_mod.BaseEventListener = object
-    tool_events_mod.ToolUsageFinishedEvent = object
+    class ToolUsageFinishedEvent:
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    class AgentExecutionCompletedEvent:
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    fake_bus = _FakeEventBus()
+
+    class BaseEventListener:
+        def __init__(self, **kwargs):
+            self.setup_listeners(fake_bus)
+
+    events_mod.BaseEventListener = BaseEventListener
+    events_mod.ToolUsageFinishedEvent = ToolUsageFinishedEvent
+    events_mod.AgentExecutionCompletedEvent = AgentExecutionCompletedEvent
 
     monkeypatch.setitem(sys.modules, "crewai", crewai_mod)
-    monkeypatch.setitem(sys.modules, "crewai.utilities", utilities_mod)
-    monkeypatch.setitem(sys.modules, "crewai.utilities.events", events_mod)
-    monkeypatch.setitem(
-        sys.modules, "crewai.utilities.events.agent_events", agent_events_mod
-    )
-    monkeypatch.setitem(
-        sys.modules, "crewai.utilities.events.base_event_listener", base_listener_mod
-    )
-    monkeypatch.setitem(
-        sys.modules, "crewai.utilities.events.tool_usage_events", tool_events_mod
-    )
+    monkeypatch.setitem(sys.modules, "crewai.events", events_mod)
 
     from provena.integrations.crewai import ProvenaCrewListener
 
-    yield ProvenaCrewListener
+    yield SimpleNamespace(
+        listener_class=ProvenaCrewListener,
+        bus=fake_bus,
+        ToolUsageFinishedEvent=ToolUsageFinishedEvent,
+        AgentExecutionCompletedEvent=AgentExecutionCompletedEvent,
+    )
 
     # Cleanup
     sys.modules.pop(module_name, None)
@@ -194,10 +221,10 @@ class TestCrewAIListener:
     def test_on_tool_usage_finished(self, crew_listener_class, memory_trail):
         import hashlib
 
-        listener = crew_listener_class(trail=memory_trail)
-        event = SimpleNamespace(tool_name="web_search", output="found data")
-
-        listener.on_tool_usage_finished(event)
+        ctx = crew_listener_class
+        ctx.listener_class(trail=memory_trail)
+        event = ctx.ToolUsageFinishedEvent(tool_name="web_search", output="found data")
+        ctx.bus.emit(source=None, event=event)
 
         records = memory_trail.query()
         assert len(records) == 1
@@ -209,10 +236,11 @@ class TestCrewAIListener:
     def test_on_agent_execution_completed(self, crew_listener_class, memory_trail):
         import hashlib
 
-        listener = crew_listener_class(trail=memory_trail)
-        event = SimpleNamespace(agent_name="researcher", output="task complete")
-
-        listener.on_agent_execution_completed(event)
+        ctx = crew_listener_class
+        ctx.listener_class(trail=memory_trail)
+        agent = SimpleNamespace(role="researcher")
+        event = ctx.AgentExecutionCompletedEvent(agent=agent, output="task complete")
+        ctx.bus.emit(source=None, event=event)
 
         records = memory_trail.query()
         assert len(records) == 1
@@ -222,26 +250,29 @@ class TestCrewAIListener:
         assert records[0]["content_hash"] == expected_hash
 
     def test_ignores_empty_output(self, crew_listener_class, memory_trail):
-        listener = crew_listener_class(trail=memory_trail)
+        ctx = crew_listener_class
+        ctx.listener_class(trail=memory_trail)
 
         # Output is None -> Should not log anything
-        tool_event = SimpleNamespace(tool_name="web_search", output=None)
-        agent_event = SimpleNamespace(agent_name="researcher", output=None)
+        tool_event = ctx.ToolUsageFinishedEvent(tool_name="web_search", output=None)
+        agent = SimpleNamespace(role="researcher")
+        agent_event = ctx.AgentExecutionCompletedEvent(agent=agent, output=None)
 
-        listener.on_tool_usage_finished(tool_event)
-        listener.on_agent_execution_completed(agent_event)
+        ctx.bus.emit(source=None, event=tool_event)
+        ctx.bus.emit(source=None, event=agent_event)
 
         assert len(memory_trail.query()) == 0
 
     def test_missing_name_fallback(self, crew_listener_class, memory_trail):
-        listener = crew_listener_class(trail=memory_trail)
+        ctx = crew_listener_class
+        ctx.listener_class(trail=memory_trail)
 
-        # Event has output, but NO tool_name or agent_name
-        tool_event = SimpleNamespace(output="tool data")
-        agent_event = SimpleNamespace(output="agent data")
+        # Tool event has no tool_name; agent has no role (and no agent at all).
+        tool_event = ctx.ToolUsageFinishedEvent(output="tool data")
+        agent_event = ctx.AgentExecutionCompletedEvent(agent=None, output="agent data")
 
-        listener.on_tool_usage_finished(tool_event)
-        listener.on_agent_execution_completed(agent_event)
+        ctx.bus.emit(source=None, event=tool_event)
+        ctx.bus.emit(source=None, event=agent_event)
 
         records = memory_trail.query()
         assert len(records) == 2
@@ -251,13 +282,13 @@ class TestCrewAIListener:
     def test_non_string_output_conversion(self, crew_listener_class, memory_trail):
         import hashlib
 
-        listener = crew_listener_class(trail=memory_trail)
+        ctx = crew_listener_class
+        ctx.listener_class(trail=memory_trail)
 
         # Pass a dict instead of a string
         complex_output = {"status": "success", "count": 42}
-        event = SimpleNamespace(tool_name="api", output=complex_output)
-
-        listener.on_tool_usage_finished(event)
+        event = ctx.ToolUsageFinishedEvent(tool_name="api", output=complex_output)
+        ctx.bus.emit(source=None, event=event)
 
         records = memory_trail.query()
         assert len(records) == 1
@@ -268,16 +299,20 @@ class TestCrewAIListener:
         assert records[0]["content_hash"] == expected_hash
 
     def test_multi_step_chain_integrity(self, crew_listener_class, memory_trail):
-        listener = crew_listener_class(trail=memory_trail)
+        ctx = crew_listener_class
+        ctx.listener_class(trail=memory_trail)
 
         # Simulate a full agent task cycle
-        tool1 = SimpleNamespace(tool_name="search", output="result A")
-        tool2 = SimpleNamespace(tool_name="calculator", output="result B")
-        agent = SimpleNamespace(agent_name="analyst", output="final report")
+        tool1 = ctx.ToolUsageFinishedEvent(tool_name="search", output="result A")
+        tool2 = ctx.ToolUsageFinishedEvent(tool_name="calculator", output="result B")
+        agent = SimpleNamespace(role="analyst")
+        agent_event = ctx.AgentExecutionCompletedEvent(
+            agent=agent, output="final report"
+        )
 
-        listener.on_tool_usage_finished(tool1)
-        listener.on_tool_usage_finished(tool2)
-        listener.on_agent_execution_completed(agent)
+        ctx.bus.emit(source=None, event=tool1)
+        ctx.bus.emit(source=None, event=tool2)
+        ctx.bus.emit(source=None, event=agent_event)
 
         verdict = memory_trail.verify_chain()
         assert verdict.intact is True

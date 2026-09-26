@@ -10,9 +10,11 @@ if TYPE_CHECKING:
     from provena.trail import ContextTrail
 
 try:
-    from crewai.utilities.events.agent_events import AgentExecutionCompletedEvent
-    from crewai.utilities.events.base_event_listener import BaseEventListener
-    from crewai.utilities.events.tool_usage_events import ToolUsageFinishedEvent
+    from crewai.events import (
+        AgentExecutionCompletedEvent,
+        BaseEventListener,
+        ToolUsageFinishedEvent,
+    )
 
     class ProvenaCrewListener(BaseEventListener):
         """CrewAI event listener that logs tool and agent outputs to a Provena trail.
@@ -29,10 +31,23 @@ try:
         """
 
         def __init__(self, trail: ContextTrail, **kwargs: Any) -> None:
-            super().__init__(**kwargs)
             self._trail = trail
+            super().__init__(**kwargs)
 
-        def on_tool_usage_finished(self, event: ToolUsageFinishedEvent) -> None:
+        def setup_listeners(self, crewai_event_bus: Any) -> None:
+            @crewai_event_bus.on(ToolUsageFinishedEvent)
+            def _on_tool_usage_finished(
+                source: Any, event: ToolUsageFinishedEvent
+            ) -> None:
+                self._log_tool_usage_finished(event)
+
+            @crewai_event_bus.on(AgentExecutionCompletedEvent)
+            def _on_agent_execution_completed(
+                source: Any, event: AgentExecutionCompletedEvent
+            ) -> None:
+                self._log_agent_execution_completed(event)
+
+        def _log_tool_usage_finished(self, event: ToolUsageFinishedEvent) -> None:
             output = getattr(event, "output", None)
             if output is None:
                 return
@@ -43,17 +58,18 @@ try:
                 source_name=f"crewai:{tool_name}",
             )
 
-        def on_agent_execution_completed(
+        def _log_agent_execution_completed(
             self, event: AgentExecutionCompletedEvent
         ) -> None:
             output = getattr(event, "output", None)
             if output is None:
                 return
-            agent_name = getattr(event, "agent_name", "unknown")
+            agent = getattr(event, "agent", None)
+            agent_role = getattr(agent, "role", None) or "unknown"
             self._trail.log(
                 content=str(output),
                 source=ContextSource.AGENT,
-                source_name=f"crewai:{agent_name}",
+                source_name=f"crewai:{agent_role}",
             )
 
 except ImportError:
