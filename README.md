@@ -161,7 +161,7 @@ try:
     old_result = web_search("competitor pricing")
 except PolicyViolation as e:
     print(f"Blocked: {e}")
-    # Blocked: freshness_check failed — STALE context blocked before reaching LLM
+    # PolicyViolation raised after the STALE record was written to the trail; with @track the wrapped call has already finished, so this does not undo its side effects
 
 # The blocked entry is still logged for the compliance record
 verdict = trail.verify_chain()
@@ -214,7 +214,7 @@ trail = ContextTrail(
 |-------|----------|
 | `LOG` | Record the violation, continue |
 | `WARN` | Call the warning callback, continue |
-| `BLOCK` | Raise `PolicyViolation`, halt the call |
+| `BLOCK` | Raise `PolicyViolation` after the record is persisted (opt-in; default trails with `policies=None` only observe/log) |
 
 Blocked entries are **always persisted** to the audit trail — the record shows what was rejected and why, satisfying EU AI Act Art. 12.
 
@@ -370,12 +370,13 @@ Your Application
     │
     ├── Retriever ──┐
     ├── Tool Call ──┤
-    ├── Agent Msg ──┤──► ContextTrail ──────────────► LLM Context Window
-    ├── Memory    ──┤         │
+    ├── Agent Msg ──┤──► ContextTrail (observe/log) ──► trail + optional PolicyViolation
+    ├── Memory    ──┤         │                              (after persist)
     └── MCP       ──┘    ┌────┴───────────────────────┐
                          │ ProvenanceValidator         │
                          │ FreshnessChecker            │
-                         │ PolicyEngine (block/warn)   │
+                         │ PolicyEngine (opt-in warn/  │
+                         │   block after persist)      │
                          │ HashChain (SHA-256 / HMAC)  │
                          │ WriteBuffer (10K+ writes/s) │
                          │ SQLite / PostgreSQL Backend │
@@ -387,6 +388,10 @@ Your Application
     ├── ComplianceReport  — EU AI Act / OWASP article-by-article scoring
     └── MCP Server        — governance tools for agents via MCP protocol
 ```
+
+The LLM path belongs to your application. Provena observes and logs
+sources by default; a configured BLOCK policy raises PolicyViolation
+after the record is written, not before the LLM is called.
 
 ## Compliance
 

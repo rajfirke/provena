@@ -107,8 +107,8 @@ Your Application
 |
 |  Retriever ---+
 |  Tool Call ---+
-|  Agent Msg ---+---> ContextTrail ---> LLM Context Window
-|  Memory    ---+        |
+|  Agent Msg ---+---> ContextTrail (observe/log) --> trail + optional PolicyViolation
+|  Memory    ---+        |                              (after persist)
 |  MCP       ---+        |
 |                  +-----+------------------+
 |                  | ProvenanceValidator     |
@@ -117,6 +117,10 @@ Your Application
 |                  | SQLite Backend          |
 |                  | OTel Exporter           |
 |                  +------------------------+
+
+The LLM path belongs to your application. Provena observes and logs
+sources by default; a configured BLOCK policy raises PolicyViolation
+after the record is written, not before the LLM is called.
 ```
 
 Pure Python, sub-1ms overhead, no model downloads. The core library uses only the standard library.
