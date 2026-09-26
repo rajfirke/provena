@@ -382,16 +382,16 @@ Your Application
                          │ SQLite / PostgreSQL Backend │
                          │ OTel Exporter               │
                          └────────────────────────────┘
-
-    The LLM path belongs to your application. Provena observes and logs
-    sources by default; a configured BLOCK policy raises PolicyViolation
-    after the record is written, not before the LLM is called.
     │
     ├── TrailAggregator   — multi-agent cross-trail governance
     ├── RetentionEngine   — record lifecycle + EU AI Act 180-day minimum
     ├── ComplianceReport  — EU AI Act / OWASP article-by-article scoring
     └── MCP Server        — governance tools for agents via MCP protocol
 ```
+
+The LLM path belongs to your application. Provena observes and logs
+sources by default; a configured BLOCK policy raises PolicyViolation
+after the record is written, not before the LLM is called.
 
 ## Compliance
 
