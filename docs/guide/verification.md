@@ -1,9 +1,19 @@
 # Chain Verification
 
 Provena maintains a SHA-256 hash chain across all audit records, creating a
-tamper-evident log. If any record is modified, deleted, or reordered after the
-fact, the chain breaks and verification fails. This gives you cryptographic
-proof that your governance trail has not been altered.
+tamper-evident log. If a record's hashed fields are modified, or a record is
+deleted or reordered, the chain breaks and verification fails. This gives you
+cryptographic proof that a record's content, source, timestamp, and position
+in the chain have not been altered.
+
+Chain verification does **not** cover every column on a record. The hash
+payload is only `previous_hash`, `content_hash`, `source`, and `timestamp`
+(see below). Governance columns outside that payload -- `provenance_status`,
+`freshness_status`, `source_name`, `metadata_json`, `config_hash`,
+`content_type`, and `truncated` -- can be modified without breaking the
+chain. Chain verification proves a record's identity and ordering; it does
+not, on its own, prove every governance annotation attached to it is
+unchanged.
 
 ## How the Hash Chain Works
 
