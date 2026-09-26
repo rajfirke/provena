@@ -10,6 +10,7 @@ import pytest
 
 from provena import ContextTrail
 from provena.buffer import WriteBuffer
+from provena.models import ContextSource
 from provena.storage import InMemoryBackend
 
 
@@ -413,6 +414,56 @@ class TestContextTrailBuffered:
         h = trail.health()
         assert h["buffered"] is False
         assert "buffer_pending" not in h
+        trail.close()
+
+    def test_last_record_sees_pending_row_before_flush(self):
+        trail = ContextTrail(
+            backend="memory", buffered=True, buffer_size=100, flush_interval=60
+        )
+        record = trail.log("pending data", source="retriever", source_name="r1")
+
+        last = trail.last_record
+        assert last is not None
+        assert last["id"] == -1
+        assert last["content_hash"] == record.entry.content_hash
+        assert last["source"] == ContextSource.RETRIEVER.value
+        assert last["source_name"] == "r1"
+        trail.close()
+
+    def test_last_record_prefers_pending_over_flushed(self):
+        trail = ContextTrail(
+            backend="memory", buffered=True, buffer_size=100, flush_interval=60
+        )
+        trail.log("flushed data", source="retriever", source_name="flushed")
+        trail.flush()
+        pending = trail.log("pending data", source="tool", source_name="pending")
+
+        last = trail.last_record
+        assert last is not None
+        assert last["id"] == -1
+        assert last["content_hash"] == pending.entry.content_hash
+        assert last["source_name"] == "pending"
+        trail.close()
+
+    def test_health_record_count_includes_pending(self):
+        trail = ContextTrail(
+            backend="memory", buffered=True, buffer_size=100, flush_interval=60
+        )
+        trail.log("data1", source="retriever")
+        trail.log("data2", source="tool")
+
+        h = trail.health()
+        assert h["record_count"] == trail.record_count
+        assert h["record_count"] == trail._backend.count() + h["buffer_pending"]
+        trail.close()
+
+    def test_unbuffered_last_record_and_health_unchanged(self):
+        trail = ContextTrail(backend="memory")
+        trail.log("data", source="retriever")
+
+        assert trail.last_record == trail._backend.get_last()
+        h = trail.health()
+        assert h["record_count"] == trail._backend.count()
         trail.close()
 
     def test_buffered_config_dict(self):

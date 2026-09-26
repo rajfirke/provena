@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Fixed
+
+- **`last_record` and `health()["record_count"]` now include unflushed buffered rows**, matching the "backend + pending" contract `query()`, `summary()`, and the `record_count` property already follow. Previously, `last_record` only ever read the backend, so it could return `None` or a stale older row while the newest logged record sat unflushed in the buffer — breaking `annotate()`'s own documented guidance to read the record's real id from `last_record` after a `flush()`. `health()["record_count"]` only read the backend too, silently under-reporting during active buffered ingestion even though `health()` already separately exposes `buffer_pending`. An unflushed row returned via `last_record` carries `id=-1`, same as `query()` (#194)
+
 ## [1.3.0] - 2026-09-22
 
 ### Added

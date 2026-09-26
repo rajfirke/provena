@@ -773,7 +773,13 @@ class ContextTrail:
 
     @property
     def last_record(self) -> dict[str, Any] | None:
-        """The most recently logged record, or None if the trail is empty."""
+        """The most recently logged record, or None if the trail is empty.
+        In buffered mode, includes unflushed pending records.
+        An unflushed row is returned with id=-1, matching query().
+        """
+        if self._buffer is not None:
+            records = self._buffer.full_snapshot()
+            return _query_row(records[-1]) if records else None
         return self._backend.get_last()
 
     def summary(self) -> dict[str, Any]:
@@ -876,7 +882,7 @@ class ContextTrail:
             signing state, and error count.
         """
         try:
-            count = self._backend.count()
+            count = self.record_count
             result: dict[str, Any] = {
                 "status": "healthy",
                 "healthy": True,
