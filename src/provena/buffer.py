@@ -109,21 +109,7 @@ class WriteBuffer:
 
     def _flush_locked(self) -> int:
         """Flush while holding self._lock. Returns count flushed."""
-        count = 0
-        while self._buffer:
-            record = self._buffer[0]
-            try:
-                self._backend.append(record)
-            except Exception:
-                _logger.warning(
-                    "Failed to flush record (keeping in buffer, %d remaining)",
-                    len(self._buffer),
-                    exc_info=True,
-                )
-                break
-            self._buffer.popleft()
-            count += 1
-        return count
+        return _drain_buffer(self._buffer, self._backend)
 
     def _atexit_flush(self) -> None:
         self._stop.set()
@@ -161,17 +147,41 @@ def _sigterm_handler(signum: int, frame: Any) -> None:
         _prev_sigterm_handler(signum, frame)
 
 
+def _drain_buffer(buffer: deque[dict[str, Any]], backend: _Appendable) -> int:
+    """Flush every record in buffer to backend, in insertion order.
+
+    Stops and logs a warning on the first failure, leaving that record
+    (and everything after it) in the buffer rather than dropping it.
+    Caller must hold the buffer's lock. Returns the count flushed.
+    """
+    count = 0
+    while buffer:
+        record = buffer[0]
+        try:
+            backend.append(record)
+        except Exception:
+            _logger.warning(
+                "Failed to flush record (keeping in buffer, %d remaining)",
+                len(buffer),
+                exc_info=True,
+            )
+            break
+        buffer.popleft()
+        count += 1
+    return count
+
+
 def _weak_flush(
     buffer: deque[dict[str, Any]],
     lock: threading.RLock,
     backend: _Appendable,
 ) -> None:
-    """Last-resort flush via weakref.finalize."""
+    """Last-resort flush via weakref.finalize.
+
+    Takes buffer/lock/backend as plain arguments rather than a bound
+    method, so the finalizer callback holds no reference to the
+    WriteBuffer itself -- weakref.finalize requires that to let the
+    object actually become collectible.
+    """
     with lock:
-        while buffer:
-            record = buffer[0]
-            try:
-                backend.append(record)
-            except Exception:
-                break
-            buffer.popleft()
+        _drain_buffer(buffer, backend)

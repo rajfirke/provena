@@ -132,6 +132,37 @@ class TestWriteBuffer:
         assert buf.pending == 0
         assert backend.count() == 1
 
+    def test_weak_flush_logs_and_keeps_record_on_failure(self, caplog):
+        from collections import deque
+
+        from provena.buffer import _weak_flush
+
+        backend = InMemoryBackend()
+
+        def failing_append(record):
+            raise OSError("simulated backend outage")
+
+        backend.append = failing_append  # type: ignore[method-assign]
+
+        buffer: deque = deque()
+        buffer.append(
+            {
+                "content_hash": "a",
+                "source": "r",
+                "source_name": "t",
+                "timestamp": "2026-07-20T00:00:00Z",
+                "chain_hash": "c",
+                "previous_hash": "p",
+            }
+        )
+        lock = threading.RLock()
+
+        with caplog.at_level("WARNING", logger="provena.buffer"):
+            _weak_flush(buffer, lock, backend)
+
+        assert len(buffer) == 1
+        assert "Failed to flush record" in caplog.text
+
     def test_full_snapshot_includes_backend_and_pending(self):
         backend = InMemoryBackend()
         buf = WriteBuffer(backend, buffer_size=100, flush_interval=60)
