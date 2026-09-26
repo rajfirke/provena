@@ -641,6 +641,22 @@ class ContextTrail:
 
         previous_hash = GENESIS_HASH
         for record in records:
+            stored_previous = record.get("previous_hash")
+            if not isinstance(stored_previous, str) or not hmac.compare_digest(
+                previous_hash, stored_previous
+            ):
+                return ChainVerdict(
+                    intact=False,
+                    total_records=len(records),
+                    broken_at=record["id"],
+                    details=(
+                        f"Chain broken at record {record['id']} — "
+                        f"previous_hash is {stored_previous!r}"
+                        if not isinstance(stored_previous, str)
+                        else f"Chain broken at record {record['id']}"
+                    ),
+                )
+
             expected = self._hasher.compute_chain_hash(
                 previous_hash=previous_hash,
                 content_hash=record["content_hash"],

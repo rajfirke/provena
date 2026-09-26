@@ -129,6 +129,21 @@ class TestContextTrailVerify:
         assert verdict.total_records == 3
         assert "chain_hash" in verdict.details
 
+    def test_verify_detects_previous_hash_tamper(self, memory_trail):
+        # Regression for #195: mutating only the stored previous_hash column
+        # (leaving chain_hash and every hashed field untouched) must break
+        # the chain. verify_chain() only recomputed chain_hash from its own
+        # tracked previous_hash, never checking the stored column against it.
+        for i in range(3):
+            memory_trail.log(f"entry_{i}", source="retriever")
+        memory_trail._backend._records[1]["previous_hash"] = "TAMPERED"
+
+        verdict = memory_trail.verify_chain()
+        assert not verdict.intact
+        assert verdict.broken_at == 2
+        assert verdict.total_records == 3
+        assert "Chain broken at record 2" in verdict.details
+
     def test_verify_signed_chain_rejects_wrong_key(self):
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
