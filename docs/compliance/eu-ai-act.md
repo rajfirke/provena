@@ -37,7 +37,7 @@ in a tamper-evident chain (`ChainHasher`). Validation results are classified as
 trail = ContextTrail(
     required_fields=["source_url", "author", "created_at"],
     max_age_days=90,
-    strict_mode=True,  # Governance failures raise exceptions
+    strict_mode=True,  # Re-raise internal governance exceptions only (e.g. storage errors); rejecting MISSING/STALE requires a separate BLOCK policy
 )
 ```
 

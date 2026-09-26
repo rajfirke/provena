@@ -166,8 +166,7 @@ concern:
 **Provenance validation catches context from unknown or unverified sources.**
 The `ProvenanceValidator` enforces configurable metadata requirements on every
 context input. Sources that cannot provide origin metadata (URL, author, creation
-date) are flagged before they enter the agent's decision-making process. In
-`strict_mode`, unverified context is rejected entirely.
+date) are flagged before they enter the agent's decision-making process. Unverified context is flagged (`MISSING` / `INCOMPLETE`) and still logged. To reject it, configure an opt-in `BLOCK`-level policy (e.g. via `PolicyEngine`). `strict_mode` only re-raises internal governance exceptions such as storage failures — it does not reject provenance verdicts.
 
 **Freshness checking catches stale injections.** Context poisoning frequently
 involves injecting outdated information that contradicts current data. The

@@ -133,8 +133,7 @@ trail = ContextTrail(
 
 ### strict_mode
 
-When `True`, governance errors (provenance validation failures, storage
-errors) propagate as exceptions instead of being silently logged.
+When `True`, internal governance exceptions (e.g. storage backend errors) propagate instead of being swallowed after `on_error`. Provenance/`MISSING` and freshness/`STALE` outcomes are not exceptions — they are recorded on the trail. To deny context after logging, configure a `BLOCK` policy separately.
 
 - **Type**: `bool`
 - **Default**: `False`
@@ -148,9 +147,11 @@ trail = ContextTrail(backend="memory", strict_mode=True)
 ```
 
 !!! tip "Use strict mode in tests"
-    Set `strict_mode=True` in your test suite to catch governance errors
-    early. In production, the default non-strict mode prevents governance
-    from blocking your agent's primary workflow.
+    Set `strict_mode=True` in your test suite to surface internal governance
+    exceptions early. In production, the default non-strict mode prevents
+    storage failures from blocking your agent's primary workflow. To deny
+    context on `MISSING`/`STALE`, configure a `BLOCK` policy — `strict_mode`
+    does not do that.
 
 ### on_error
 
