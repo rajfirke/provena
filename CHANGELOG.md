@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs state that a SQLite trail allows only one writer.** README and the verification guide now say concurrent appends to one SQLite file can fork the hash chain, and point multi-worker deployments at PostgreSQL (#202)
+
 ### Fixed
 
 - **`verify_chain()` now checks each record's stored `previous_hash` column**, not just its `chain_hash`. It previously recomputed `chain_hash` using its own internally tracked previous hash, never comparing that against the value actually stored in the row — so mutating only a record's `previous_hash` column (leaving `chain_hash` and every hashed field untouched) went undetected. Also tightened `docs/guide/verification.md`, which claimed any record modification breaks the chain; it now states plainly that only the hashed fields (`previous_hash`, `content_hash`, `source`, `timestamp`) are covered, and governance columns like `provenance_status` and `metadata_json` can be modified without breaking verification (#195)
