@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **Docs for PostgreSQL, buffered writes, TOML config, and the newer CLI commands.** The site now has a PostgreSQL guide and a buffered-write guide. The configuration page documents `ContextTrail(config=path)`, `signing_key_env`, buffer settings, and policy entries. The CLI reference covers `stats`, `retain`, `migrate`, and `mcp serve` (#56)
+
 ### Fixed
 
 - **`verify_chain()` now checks each record's stored `previous_hash` column**, not just its `chain_hash`. It previously recomputed `chain_hash` using its own internally tracked previous hash, never comparing that against the value actually stored in the row — so mutating only a record's `previous_hash` column (leaving `chain_hash` and every hashed field untouched) went undetected. Also tightened `docs/guide/verification.md`, which claimed any record modification breaks the chain; it now states plainly that only the hashed fields (`previous_hash`, `content_hash`, `source`, `timestamp`) are covered, and governance columns like `provenance_status` and `metadata_json` can be modified without breaking verification (#195)

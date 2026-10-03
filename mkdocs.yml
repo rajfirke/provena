@@ -73,6 +73,8 @@ nav:
     - Freshness Checking: guide/freshness.md
     - Chain Verification: guide/verification.md
     - Configuration: guide/configuration.md
+    - PostgreSQL: guide/postgresql.md
+    - Buffered Writes: guide/performance.md
     - Testing: guide/testing.md
   - Integrations:
     - LangChain: integrations/langchain.md

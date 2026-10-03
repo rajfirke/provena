@@ -26,7 +26,7 @@ Storage backend type.
 
 - **Type**: `str`
 - **Default**: `"sqlite"`
-- **Options**: `"sqlite"`, `"memory"`
+- **Options**: `"sqlite"`, `"memory"`, `"postgresql"`
 
 ```python
 # Persistent storage (default)
@@ -34,7 +34,15 @@ trail = ContextTrail(backend="sqlite")
 
 # In-memory storage for testing
 trail = ContextTrail(backend="memory")
+
+# PostgreSQL. A postgresql:// URL selects this backend on its own.
+trail = ContextTrail(
+    storage_path="postgresql://provena:provena@localhost:5432/provena",
+)
 ```
+
+`"postgresql"` needs `pip install provena[postgres]`. See
+[PostgreSQL](postgresql.md).
 
 ### required_fields
 
@@ -223,10 +231,69 @@ trail = ContextTrail(
 | `freshness`   | `max_age_days`       | `max_age_days`         | `90`          |
 | `freshness`   | `temporal_detection` | `temporal_detection`   | `True`        |
 | `hash_chain`  | `signing_key`        | `signing_key`          | `None`        |
+| `hash_chain`  | `signing_key_env`    | env var read when `signing_key` is omitted | *(none)* |
+| `storage`     | `buffered`           | `buffered`             | `False`       |
+| `storage`     | `buffer_size`        | `buffer_size`          | `500`         |
+| `storage`     | `flush_interval`     | `flush_interval`       | `1.0`         |
+| `storage`     | `pool_size`          | PostgreSQL pool max size | `5`         |
 | `otel`        | `enabled`            | `otel_enabled`         | `False`       |
 | `otel`        | `service_name`       | `otel_service_name`    | `"provena"`   |
 | *(top-level)* | `max_content_bytes`  | `max_content_bytes`    | `65536`       |
 | *(top-level)* | `strict_mode`        | `strict_mode`          | `False`       |
+| *(top-level)* | `policies`           | policy list            | `[]`          |
+
+`policies` entries use `check` (`freshness`, `provenance`, `require_signing`,
+`source_allowlist`), `enforcement` (`log`, `warn`, `block`), and the check's
+own fields (`status` or `sources`).
+
+`signing_key_env` names an environment variable. Provena reads that variable
+only when `signing_key` itself is absent. Put the variable name in
+`signing_key_env`, not a `${...}` placeholder in `signing_key`.
+
+### Loading a TOML or YAML file
+
+`ContextTrail(config="provena.toml")` and `ContextTrail(config="provena.yaml")`
+load the file. TOML uses the standard library (`tomli` on Python 3.10). YAML
+needs `pip install provena[yaml]`.
+
+```python
+from provena import ContextTrail
+
+trail = ContextTrail(config="provena.toml")
+```
+
+Example `provena.toml`:
+
+```toml
+[storage]
+backend = "sqlite"
+path = "governance/audit.db"
+buffered = true
+buffer_size = 500
+flush_interval = 1.0
+
+[provenance]
+required_fields = ["source_url", "created_at"]
+
+[freshness]
+max_age_days = 60
+temporal_detection = true
+
+[hash_chain]
+signing_key_env = "PROVENA_SIGNING_KEY"
+
+[[policies]]
+check = "freshness"
+status = "STALE"
+enforcement = "warn"
+
+[otel]
+enabled = false
+service_name = "my-agent"
+
+max_content_bytes = 65536
+strict_mode = false
+```
 
 ### Loading from a YAML file
 
@@ -257,7 +324,7 @@ freshness:
   temporal_detection: true
 
 hash_chain:
-  signing_key: ${PROVENA_SIGNING_KEY}
+  signing_key_env: PROVENA_SIGNING_KEY
 
 otel:
   enabled: false

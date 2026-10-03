@@ -22,7 +22,8 @@ provena [OPTIONS] COMMAND [ARGS]...
 
 | Option | Default | Env var | Description |
 |---|---|---|---|
-| `--db PATH` | `provena.db` | `PROVENA_DB` | Path to the Provena SQLite database file |
+| `--db PATH` | `provena.db` | `PROVENA_DB` | SQLite path, or a `postgresql://` URL |
+| `--config PATH` | *(none)* | | `provena.toml` or `provena.yaml`. When set, storage and policies come from the file |
 | `--signing-key TEXT` | *(none)* | `PROVENA_SIGNING_KEY` | HMAC signing key for hash chain verification |
 | `--version` | | | Show the installed Provena version and exit |
 
@@ -364,6 +365,70 @@ Signed:     No
 
 ---
 
+## `provena stats`
+
+Print one line for CI logs: record count, provenance counts, freshness
+counts, chain status, and whether the trail is signed.
+
+```bash
+provena --db audit.db stats
+```
+
+```text
+42 records | provenance: MISSING: 2 VALID: 40 | freshness: FRESH: 38 STALE: 4 | chain: INTACT | signed: yes
+```
+
+Empty provenance or freshness maps print `none`.
+
+---
+
+## `provena retain`
+
+Delete records older than `--max-age` days. The minimum is 180. `--dry-run`
+only reports what would be removed. `--archive` writes those rows to JSON
+before deletion.
+
+```bash
+provena --db audit.db retain --max-age 365 --dry-run
+provena --db audit.db retain --max-age 365 --archive backup.json
+```
+
+---
+
+## `provena migrate`
+
+Copy records and annotations from a SQLite file or a PostgreSQL URL to
+another SQLite file or PostgreSQL URL, then verify the destination chain.
+The source path must already exist. An empty source prints that there is
+nothing to migrate.
+
+```bash
+provena migrate --from audit.db --to "postgresql://localhost:5432/provena"
+provena migrate --from audit.db --to audit-copy.db --batch-size 500
+```
+
+PostgreSQL destinations need `pip install provena[postgres]`.
+
+---
+
+## `provena mcp serve`
+
+Start the MCP governance server on stdio. Pass `--config` on the root
+command when the trail should use a config file. An explicit root `--db`
+is kept when `mcp serve --db` is omitted. A missing SQLite path is refused
+instead of creating an empty file.
+
+```bash
+pip install "provena[mcp,cli]"
+provena --db audit.db mcp serve
+provena --config provena.toml mcp serve
+```
+
+`--transport` accepts `stdio`. Tool details are in the
+[MCP governance server](mcp.md) guide.
+
+---
+
 ## Environment variables
 
 | Variable | Maps to | Description |
@@ -395,4 +460,7 @@ provena --db production.db report --format json --output report.json
 
 # Quick summary for the build log
 provena --db production.db summary
+
+# One-line status for the build log
+provena --db production.db stats
 ```
