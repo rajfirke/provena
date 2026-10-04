@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - **Concurrent write tests for `ContextTrail` and `WriteBuffer`.** Several threads log into one in-memory trail, with and without buffering, then the suite checks that every record landed and `verify_chain()` still reports an intact chain (#55)
 
+### Changed
+
+- **CONTRIBUTING.md matches the current tree and dev setup.** The project map includes modules added since v0.7, the editable install lists the `yaml` extra, and PostgreSQL tests document `PROVENA_TEST_PG_URL` (#58)
+
 ### Fixed
 
 - **`verify_chain()` now checks each record's stored `previous_hash` column**, not just its `chain_hash`. It previously recomputed `chain_hash` using its own internally tracked previous hash, never comparing that against the value actually stored in the row — so mutating only a record's `previous_hash` column (leaving `chain_hash` and every hashed field untouched) went undetected. Also tightened `docs/guide/verification.md`, which claimed any record modification breaks the chain; it now states plainly that only the hashed fields (`previous_hash`, `content_hash`, `source`, `timestamp`) are covered, and governance columns like `provenance_status` and `metadata_json` can be modified without breaking verification (#195)
