@@ -7,6 +7,8 @@ import json
 import os
 import sqlite3
 import tempfile
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
@@ -164,6 +166,130 @@ class TestContextTrailVerify:
             trail_b.close()
         finally:
             os.unlink(db_path)
+
+    def test_verify_snapshot_excludes_log_blocked_on_trail_lock(self, memory_trail):
+        memory_trail.log("seed", source="retriever")
+        entered = threading.Event()
+        release = threading.Event()
+        real_all_records = memory_trail._backend.all_records
+
+        def gated_all_records():
+            entered.set()
+            assert release.wait(timeout=5)
+            return real_all_records()
+
+        memory_trail._backend.all_records = gated_all_records  # type: ignore[method-assign]
+
+        verdicts: list = []
+
+        def run_verify() -> None:
+            verdicts.append(memory_trail.verify_chain())
+
+        verifier = threading.Thread(target=run_verify)
+        verifier.start()
+        assert entered.wait(timeout=5)
+
+        logged = threading.Event()
+
+        def run_log() -> None:
+            memory_trail.log("concurrent", source="retriever")
+            logged.set()
+
+        logger = threading.Thread(target=run_log)
+        logger.start()
+        time.sleep(0.05)
+        assert not logged.is_set()
+
+        release.set()
+        verifier.join(timeout=5)
+        logger.join(timeout=5)
+
+        assert verdicts[0].intact
+        assert verdicts[0].total_records == 1
+        assert logged.is_set()
+        memory_trail._backend.all_records = real_all_records  # type: ignore[method-assign]
+        final = memory_trail.verify_chain()
+        assert final.intact
+        assert final.total_records == 2
+
+    def test_verify_buffered_snapshot_includes_flushed_prefix_only(self):
+        trail = ContextTrail(backend="memory", buffered=True, flush_interval=3600)
+        try:
+            trail.log("seed", source="retriever")
+            entered = threading.Event()
+            release = threading.Event()
+            real_all_records = trail._backend.all_records
+
+            def gated_all_records():
+                entered.set()
+                assert release.wait(timeout=5)
+                return real_all_records()
+
+            trail._backend.all_records = gated_all_records  # type: ignore[method-assign]
+            verdicts: list = []
+
+            def run_verify() -> None:
+                verdicts.append(trail.verify_chain())
+
+            verifier = threading.Thread(target=run_verify)
+            verifier.start()
+            assert entered.wait(timeout=5)
+
+            logged = threading.Event()
+
+            def run_log() -> None:
+                trail.log("concurrent", source="retriever")
+                logged.set()
+
+            logger = threading.Thread(target=run_log)
+            logger.start()
+            time.sleep(0.05)
+            assert not logged.is_set()
+
+            release.set()
+            verifier.join(timeout=5)
+            logger.join(timeout=5)
+
+            assert verdicts[0].intact
+            assert verdicts[0].total_records == 1
+            assert logged.is_set()
+            trail._backend.all_records = real_all_records  # type: ignore[method-assign]
+            final = trail.verify_chain()
+            assert final.intact
+            assert final.total_records == 2
+        finally:
+            trail.close()
+
+    def test_verify_stays_intact_while_logging(self, memory_trail):
+        errors: list[str] = []
+        per_thread = 30
+
+        def logger() -> None:
+            for i in range(per_thread):
+                record = memory_trail.log(
+                    f"{threading.get_ident()}-{i}", source="retriever"
+                )
+                assert record is not None
+
+        def verifier() -> None:
+            for _ in range(20):
+                verdict = memory_trail.verify_chain()
+                if not verdict.intact:
+                    errors.append(verdict.details)
+
+        workers = [threading.Thread(target=logger) for _ in range(4)]
+        checker = threading.Thread(target=verifier)
+        checker.start()
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join()
+        checker.join()
+
+        assert errors == []
+        final = memory_trail.verify_chain()
+        assert final.intact
+        assert final.total_records == 4 * per_thread
 
 
 class TestBytesFreshness:
