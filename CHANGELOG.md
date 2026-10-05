@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **Docs for policies, multi-agent aggregation, retention, compliance reports, and framework adapters.** New guide pages cover the policy engine, `TrailAggregator`, retention, and compliance reports. Integration pages cover CrewAI, AutoGen, the OpenAI Agents SDK, and Google ADK. An operator guide explains report scores, verdict labels, verification, annotations, and retention for non-developers (#62, #63, #64, #65, #7)
+
 ## [1.3.1] - 2026-10-04
 
 ### Added
@@ -15,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Changed
 
 - **Docs no longer say `strict_mode` rejects `MISSING` or `STALE` provenance, or that Provena blocks context before the LLM.** `strict_mode` re-raises internal governance errors. A `BLOCK` policy raises `PolicyViolation` after the record is written (#199, #200)
+>>>>>>> origin/main
 
 ### Fixed
 

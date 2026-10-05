@@ -71,18 +71,27 @@ nav:
     - Tracking Context: guide/tracking.md
     - Provenance Validation: guide/provenance.md
     - Freshness Checking: guide/freshness.md
+    - Policy Engine: guide/policies.md
     - Chain Verification: guide/verification.md
+    - Multi-Agent Aggregation: guide/multi-agent.md
+    - Retention: guide/retention.md
+    - Compliance Reports: guide/reports.md
     - Configuration: guide/configuration.md
     - Testing: guide/testing.md
   - Integrations:
     - LangChain: integrations/langchain.md
     - LlamaIndex: integrations/llamaindex.md
+    - CrewAI: integrations/crewai.md
+    - AutoGen: integrations/autogen.md
+    - OpenAI Agents: integrations/openai-agents.md
+    - Google ADK: integrations/google-adk.md
     - OpenTelemetry: integrations/opentelemetry.md
     - MCP Governance Server: integrations/mcp.md
     - CLI Reference: integrations/cli.md
   - Compliance:
     - EU AI Act: compliance/eu-ai-act.md
     - OWASP ASI06: compliance/owasp-asi06.md
+    - Operator Guide: compliance/operator-guide.md
   - API Reference: api/
 
 markdown_extensions:
