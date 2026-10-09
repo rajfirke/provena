@@ -7,6 +7,7 @@ from typing import Any
 
 import click
 
+from provena import __version__
 from provena.trail import ContextTrail, _is_pg_url
 
 
@@ -46,7 +47,7 @@ def _positive_int(ctx: click.Context, param: click.Parameter, value: int) -> int
     envvar="PROVENA_SIGNING_KEY",
     help="HMAC signing key for chain verification.",
 )
-@click.version_option(package_name="provena")
+@click.version_option(version=__version__)
 @click.pass_context
 def cli(
     ctx: click.Context,
