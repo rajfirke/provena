@@ -393,6 +393,13 @@ The LLM path belongs to your application. Provena observes and logs
 sources by default; a configured BLOCK policy raises PolicyViolation
 after the record is written, not before the LLM is called.
 
+SQLite trails support a single writer: one `ContextTrail` (one process)
+appending a given database file. Two trail instances, or two processes,
+appending the same file can fork the hash chain — each seeds its in-memory
+tip once, and SQLite append does not recompute a stale tip. For multiple
+workers or multiple trail instances writing the same trail, use the
+PostgreSQL backend.
+
 ## Compliance
 
 Provena maps directly to EU AI Act requirements for high-risk AI systems:
