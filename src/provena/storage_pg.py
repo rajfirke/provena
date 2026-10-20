@@ -245,6 +245,12 @@ class PostgreSQLBackend:
         self._check_open()
         with self._pool.connection() as conn:
             with conn.cursor() as cur:
+                # Validate that the record exists first, so a missing id raises
+                # the same ValueError as the other backends instead of letting
+                # PostgreSQL reject the annotations foreign key.
+                cur.execute("SELECT id FROM trail WHERE id = %s", (record_id,))
+                if cur.fetchone() is None:
+                    raise ValueError(f"Record {record_id} does not exist")
                 cur.execute(
                     "INSERT INTO annotations (record_id, note, reviewer, timestamp) "
                     "VALUES (%s, %s, %s, %s) RETURNING id",

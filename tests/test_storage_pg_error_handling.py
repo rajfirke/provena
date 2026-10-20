@@ -52,5 +52,33 @@ def test_count_raises_runtime_error_when_no_row_returned():
 
 def test_add_annotation_raises_runtime_error_when_no_row_returned():
     backend = _make_backend_with_mock_pool()
+    # The existence check sees the trail row; the INSERT itself returns nothing.
+    backend._pool.connection.return_value.cursor.return_value.fetchone.side_effect = [
+        (1,),
+        None,
+    ]
     with pytest.raises(RuntimeError, match="INSERT did not return an id"):
         backend.add_annotation(1, "note", "reviewer", "2026-01-01T00:00:00Z")
+
+
+def test_add_annotation_raises_value_error_when_record_missing():
+    # The trail row does not exist: the same ValueError the in-memory and
+    # SQLite backends raise, not a PostgreSQL foreign-key error (#229).
+    backend = _make_backend_with_mock_pool()
+    with pytest.raises(ValueError, match="Record 1 does not exist"):
+        backend.add_annotation(1, "note", "reviewer", "2026-01-01T00:00:00Z")
+
+
+def test_add_annotation_returns_id_when_record_exists():
+    backend = _make_backend_with_mock_pool()
+    mock_cursor = backend._pool.connection.return_value.cursor.return_value
+    mock_cursor.fetchone.side_effect = [(1,), (42,)]
+
+    ann_id = backend.add_annotation(1, "note", "reviewer", "2026-01-01T00:00:00Z")
+
+    assert ann_id == 42
+    insert_calls = [
+        call for call in mock_cursor.execute.call_args_list if "INSERT INTO annotations" in call.args[0]
+    ]
+    assert len(insert_calls) == 1
+    assert insert_calls[0].args[1] == (1, "note", "reviewer", "2026-01-01T00:00:00Z")
