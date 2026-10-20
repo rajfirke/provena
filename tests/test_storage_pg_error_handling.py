@@ -54,3 +54,14 @@ def test_add_annotation_raises_runtime_error_when_no_row_returned():
     backend = _make_backend_with_mock_pool()
     with pytest.raises(RuntimeError, match="INSERT did not return an id"):
         backend.add_annotation(1, "note", "reviewer", "2026-01-01T00:00:00Z")
+
+
+def test_add_annotation_translates_missing_record_foreign_key():
+    backend = _make_backend_with_mock_pool()
+    error = RuntimeError("foreign key violation")
+    error.sqlstate = "23503"
+    cursor = backend._pool.connection.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+    cursor.execute.side_effect = error
+
+    with pytest.raises(ValueError, match="Record 999 does not exist"):
+        backend.add_annotation(999, "note", "reviewer", "2026-01-01T00:00:00Z")
