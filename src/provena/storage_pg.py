@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 SCHEMA_VERSION = 1
@@ -81,6 +81,10 @@ class PostgreSQLBackend:
             min_size=min_pool_size,
             max_size=pool_size,
             open=True,
+            # The chain hashes the timestamp string with its +00:00 offset; a
+            # session in another TimeZone reads timestamptz back with a
+            # different offset and verify_chain() reports a break nobody made.
+            kwargs={"options": "-c timezone=UTC"},
         )
         self._hasher = hasher
         self._init_schema()
@@ -245,6 +249,12 @@ class PostgreSQLBackend:
         self._check_open()
         with self._pool.connection() as conn:
             with conn.cursor() as cur:
+                # Validate that the record exists first, so a missing id raises
+                # the same ValueError as the other backends instead of letting
+                # PostgreSQL reject the annotations foreign key.
+                cur.execute("SELECT id FROM trail WHERE id = %s", (record_id,))
+                if cur.fetchone() is None:
+                    raise ValueError(f"Record {record_id} does not exist")
                 cur.execute(
                     "INSERT INTO annotations (record_id, note, reviewer, timestamp) "
                     "VALUES (%s, %s, %s, %s) RETURNING id",
@@ -281,6 +291,10 @@ def _row_to_dict(cursor: Any, row: tuple[Any, ...]) -> dict[str, Any]:
         d["truncated"] = 1 if d["truncated"] else 0
     ts = d.get("timestamp")
     if ts is not None and not isinstance(ts, str):
+        # An aware timestamp read back in a non-UTC session TimeZone must
+        # become the +00:00 form that was hashed, not the session's offset.
+        if isinstance(ts, datetime) and ts.tzinfo is not None:
+            ts = ts.astimezone(timezone.utc)
         d["timestamp"] = ts.isoformat()
     for json_field in ("provenance_json", "metadata_json"):
         val = d.get(json_field)
