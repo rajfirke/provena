@@ -91,6 +91,7 @@ nav:
   - Compliance:
     - EU AI Act: compliance/eu-ai-act.md
     - OWASP ASI06: compliance/owasp-asi06.md
+    - Operator Guide: compliance/operator-guide.md
   - API Reference: api/
 
 markdown_extensions:
