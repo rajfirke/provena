@@ -187,3 +187,41 @@ class TestPostgreSQLImportError:
 
         with pytest.raises(ImportError, match="psycopg"):
             PostgreSQLBackend(conninfo="postgresql://localhost/test")
+
+
+class TestPostgreSQLTimeZone:
+    def test_verify_chain_intact_when_database_timezone_is_not_utc(self, pg_backend):
+        # Regression for #230. The chain hash covers the timestamp string, and
+        # psycopg renders timestamptz in the session TimeZone. Under a non-UTC
+        # database default the readback offset changed, so verify_chain()
+        # reported a break on a trail nobody had edited. The CI Postgres
+        # service runs UTC, so the zone is forced here rather than relying on
+        # whatever the host happens to be set to.
+        import psycopg
+
+        from provena import ContextTrail
+
+        with psycopg.connect(_pg_conninfo) as conn:
+            dbname = conn.execute("SELECT current_database()").fetchone()[0]
+
+        with psycopg.connect(_pg_conninfo) as conn:
+            conn.execute(
+                f"ALTER DATABASE \"{dbname}\" SET TimeZone TO 'America/New_York'"
+            )
+            conn.commit()
+
+        try:
+            trail = ContextTrail(storage_path=_pg_conninfo)
+            try:
+                record = trail.log("logged under a non-UTC default", source="retriever")
+                stored = trail.query(limit=1)[0]
+
+                assert stored["timestamp"] == record.entry.timestamp.isoformat()
+                assert stored["timestamp"].endswith("+00:00")
+                assert trail.verify_chain().intact
+            finally:
+                trail.close()
+        finally:
+            with psycopg.connect(_pg_conninfo) as conn:
+                conn.execute(f'ALTER DATABASE "{dbname}" RESET TimeZone')
+                conn.commit()
