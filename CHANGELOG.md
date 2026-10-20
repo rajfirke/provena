@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+
+- **CONTRIBUTING.md matches the current tree and dev setup.** The project map includes modules added since v0.7, the editable install lists the `yaml` extra, and PostgreSQL tests document `PROVENA_TEST_PG_URL` (#58)
+
 ### Fixed
 
 - **`verify_chain()` takes a consistent snapshot under the trail lock.** Flush (when buffering) and `all_records()` now share `log()`'s lock, so a concurrent append cannot land between them. The hash walk still runs after the lock is released. `total_records` matches the snapshot captured for that call (#198)

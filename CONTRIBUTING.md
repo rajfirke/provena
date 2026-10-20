@@ -10,13 +10,22 @@ git clone https://github.com/rajfirke/provena.git
 cd provena
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev,cli,otel]"
+pip install -e ".[dev,cli,otel,yaml]"
 pip install opentelemetry-sdk  # for OTel tests
 
 # Verify everything works
 pytest
 ruff check src/ tests/
 mypy src/provena/
+```
+
+PostgreSQL backend tests are skipped unless `psycopg` is installed and
+`PROVENA_TEST_PG_URL` points at a database:
+
+```bash
+pip install -e ".[postgres]"
+export PROVENA_TEST_PG_URL="postgresql://localhost:5432/provena_test"
+pytest tests/test_storage_pg.py -v
 ```
 
 ## Project Structure
@@ -27,7 +36,14 @@ src/provena/
 ├── models.py                # Core data types (ContextEntry, TrailRecord, etc.)
 ├── hasher.py                # SHA-256 / HMAC-SHA256 hash chain
 ├── storage.py               # SQLite + InMemory backends
+├── storage_pg.py            # PostgreSQL backend
 ├── trail.py                 # ContextTrail engine + @track decorator
+├── buffer.py                # Async batch write buffer
+├── policy.py                # Policy engine (LOG / WARN / BLOCK)
+├── aggregator.py            # TrailAggregator for multi-agent trails
+├── retention.py             # Retention engine
+├── report.py                # Compliance report generator
+├── mcp_server.py            # MCP governance server
 ├── validators/
 │   ├── provenance.py        # Provenance validation (VALID/MISSING/INCOMPLETE)
 │   └── freshness.py         # Freshness checking with regex temporal detection
@@ -35,9 +51,13 @@ src/provena/
 │   └── otel.py              # OpenTelemetry span export
 ├── integrations/
 │   ├── langchain.py         # LangChain BaseCallbackHandler
-│   └── llamaindex.py        # LlamaIndex BaseNodePostprocessor
+│   ├── llamaindex.py        # LlamaIndex BaseNodePostprocessor
+│   ├── crewai.py            # ProvenaCrewListener
+│   ├── autogen.py           # ProvenaAutoGenHook
+│   ├── openai_agents.py     # ProvenaRunHooks
+│   └── google_adk.py        # ProvenaADKCallback
 └── cli/
-    └── main.py              # Click-based CLI (audit/verify/report/summary)
+    └── main.py              # Click-based CLI (audit/verify/report/summary/retain)
 ```
 
 ## How to Contribute
