@@ -130,6 +130,14 @@ class PostgreSQLBackend:
                         )
                         previous_hash = actual_prev
 
+                # Report what is about to be stored. The tip-repair branch
+                # above can replace both hashes, and the caller treats the
+                # values it gets back as the tamper-evident receipt for this
+                # record, so it has to see the stored pair rather than the
+                # pair it submitted.
+                record["chain_hash"] = chain_hash
+                record["previous_hash"] = previous_hash
+
                 cur.execute(
                     "INSERT INTO trail "
                     "(content_hash, source, source_name, timestamp, "

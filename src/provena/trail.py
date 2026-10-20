@@ -388,7 +388,7 @@ class ContextTrail:
                 timestamp=entry.timestamp.isoformat(),
             )
 
-            record_data = {
+            record_data: dict[str, Any] = {
                 "content_hash": entry.content_hash,
                 "source": entry.source.value,
                 "source_name": entry.source_name,
@@ -412,6 +412,12 @@ class ContextTrail:
                 record_id = -1
             else:
                 record_id = self._backend.append(record_data)
+                # A backend may repair the link it stores. PostgreSQL holds an
+                # advisory lock and recomputes both hashes when the submitted
+                # previous_hash is no longer the tip, so read back what was
+                # actually written instead of trusting the pre-insert values.
+                chain_hash = record_data["chain_hash"]
+                prev_hash = record_data["previous_hash"]
             self._previous_hash = chain_hash
 
         trail_record = TrailRecord(
