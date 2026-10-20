@@ -242,9 +242,14 @@ class PostgreSQLBackend:
     def add_annotation(
         self, record_id: int, note: str, reviewer: str, timestamp: str
     ) -> int:
+        """Add an annotation, raising ValueError if the record does not exist."""
         self._check_open()
         with self._pool.connection() as conn:
             with conn.cursor() as cur:
+                cur.execute("SELECT id FROM trail WHERE id = %s", (record_id,))
+                if cur.fetchone() is None:
+                    raise ValueError(f"Record {record_id} does not exist")
+
                 cur.execute(
                     "INSERT INTO annotations (record_id, note, reviewer, timestamp) "
                     "VALUES (%s, %s, %s, %s) RETURNING id",

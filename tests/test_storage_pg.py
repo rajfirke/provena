@@ -132,6 +132,21 @@ class TestPostgreSQLBackendQuery:
 
 
 class TestPostgreSQLBackendAnnotations:
+    @pytest.mark.parametrize("has_existing_record", [False, True])
+    def test_add_annotation_nonexistent_record_raises_value_error(
+        self, pg_backend, has_existing_record
+    ):
+        if has_existing_record:
+            pg_backend.append(_make_record())
+
+        with pytest.raises(ValueError, match=r"^Record 9999 does not exist$"):
+            pg_backend.add_annotation(
+                9999, "orphan", "reviewer", "2026-07-18T12:00:00Z"
+            )
+
+        with pg_backend._pool.connection() as conn:
+            assert conn.execute("SELECT COUNT(*) FROM annotations").fetchone()[0] == 0
+
     def test_add_and_get_annotations(self, pg_backend):
         pg_backend.append(_make_record())
         ann_id = pg_backend.add_annotation(

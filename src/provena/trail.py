@@ -778,10 +778,10 @@ class ContextTrail:
             The ID of the created annotation.
 
         Raises:
-            ValueError: If ``record_id`` is less than 1. In buffered mode
-                ``log()`` returns ``TrailRecord(id=-1)`` until the record
-                reaches the backend, and annotating that placeholder is
-                rejected by every backend with a different low-level error.
+            ValueError: If ``record_id`` is less than 1 or does not exist.
+                In buffered mode, flush pending records before annotating
+                them; ``log()`` returns ``TrailRecord(id=-1)`` until the
+                record reaches the backend.
         """
         if record_id < 1:
             raise ValueError(
