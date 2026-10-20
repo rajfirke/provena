@@ -195,6 +195,7 @@ class RetentionEngine:
         )
 
     def _delete_expired(self, expired: list[dict[str, Any]]) -> int:
+        """Tombstone expired records using the backend's tombstone_by_ids method."""
         backend = self._trail._backend
         expired_ids = [r["id"] for r in expired if "id" in r]
 
@@ -202,56 +203,13 @@ class RetentionEngine:
             return 0
 
         tombstone_meta = json.dumps({"_tombstone": True})
+        metadata = {
+            "provenance_json": None,
+            "missing_fields": "",
+            "metadata_json": tombstone_meta,
+            "source_name": "retained",
+        }
 
-        if hasattr(backend, "_conn") and backend._conn is not None:
-            placeholders = ",".join("?" * len(expired_ids))
-            with backend._lock:
-                backend._conn.execute(
-                    f"DELETE FROM annotations WHERE record_id IN ({placeholders})",
-                    expired_ids,
-                )
-                for rid in expired_ids:
-                    backend._conn.execute(
-                        "UPDATE trail SET provenance_json = NULL, "
-                        "missing_fields = '', metadata_json = ?, "
-                        "source_name = 'retained' WHERE id = ?",
-                        (tombstone_meta, rid),
-                    )
-                backend._conn.commit()
-            return len(expired_ids)
-
-        if hasattr(backend, "_records"):
-            id_set = set(expired_ids)
-            count = 0
-            with backend._lock:
-                for r in backend._records:
-                    if r.get("id") in id_set:
-                        r["provenance_json"] = None
-                        r["missing_fields"] = ""
-                        r["metadata_json"] = tombstone_meta
-                        r["source_name"] = "retained"
-                        count += 1
-                backend._annotations = [
-                    a for a in backend._annotations if a.get("record_id") not in id_set
-                ]
-            return count
-
-        if hasattr(backend, "_pool"):
-            with backend._pool.connection() as conn:
-                with conn.cursor() as cur:
-                    for rid in expired_ids:
-                        cur.execute(
-                            "DELETE FROM annotations WHERE record_id = %s",
-                            (rid,),
-                        )
-                        cur.execute(
-                            "UPDATE trail SET provenance_json = NULL, "
-                            "missing_fields = '', metadata_json = %s, "
-                            "source_name = 'retained' WHERE id = %s",
-                            (tombstone_meta, rid),
-                        )
-                conn.commit()
-            return len(expired_ids)
-
-        _logger.warning("Backend does not support retention")
-        return 0
+        # Use the backend's tombstone_by_ids method (works for all backends)
+        deleted_count = backend.tombstone_by_ids(expired_ids, metadata)
+        return deleted_count

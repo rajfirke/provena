@@ -92,6 +92,26 @@ class StorageBackend(Protocol):
 
     def get_annotations(self, record_id: int) -> list[dict[str, Any]]: ...
 
+    def tombstone_by_ids(
+        self, ids: list[int], metadata: dict[str, Any]
+    ) -> int:
+        """Tombstone records by their IDs (mark as deleted without removal).
+
+        Updates records with metadata (e.g., source_name="retained") and cascades
+        annotation deletion to maintain referential integrity.
+
+        Args:
+            ids: List of record IDs to tombstone.
+            metadata: Dictionary of fields to update (e.g., {"source_name": "retained"}).
+
+        Returns:
+            Number of records tombstoned.
+
+        Raises:
+            RuntimeError: If backend is closed.
+        """
+        ...
+
     def close(self) -> None:
         """Close the backend and release resources."""
         ...
@@ -287,6 +307,40 @@ class SQLiteBackend:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def tombstone_by_ids(
+        self, ids: list[int], metadata: dict[str, Any]
+    ) -> int:
+        """Tombstone records by their IDs (mark as deleted without removal)."""
+        if not ids:
+            return 0
+
+        with self._lock:
+            conn = self._check_open()
+            placeholders = ",".join("?" * len(ids))
+
+            # Delete annotations
+            conn.execute(
+                f"DELETE FROM annotations WHERE record_id IN ({placeholders})",
+                ids,
+            )
+
+            # Build UPDATE statement from metadata
+            updates = []
+            values = []
+            for key, value in metadata.items():
+                updates.append(f"{key} = ?")
+                values.append(value)
+
+            if updates:
+                values.extend(ids)
+                update_clause = ", ".join(updates)
+                conn.execute(
+                    f"UPDATE trail SET {update_clause} WHERE id IN ({placeholders})",
+                    values,
+                )
+            conn.commit()
+            return len(ids)
+
     def close(self) -> None:
         """Close the backend and release resources."""
         with self._lock:
@@ -315,8 +369,9 @@ class InMemoryBackend:
     def get(self, record_id: int) -> dict[str, Any] | None:
         """Retrieve a record by ID, or None if not found."""
         with self._lock:
-            if 1 <= record_id <= len(self._records):
-                return {**self._records[record_id - 1]}
+            for r in self._records:
+                if r["id"] == record_id:
+                    return {**r}
             return None
 
     def get_last(self) -> dict[str, Any] | None:
@@ -399,6 +454,30 @@ class InMemoryBackend:
     def get_annotations(self, record_id: int) -> list[dict[str, Any]]:
         with self._lock:
             return [{**a} for a in self._annotations if a["record_id"] == record_id]
+
+    def tombstone_by_ids(
+        self, ids: list[int], metadata: dict[str, Any]
+    ) -> int:
+        """Tombstone records by their IDs (mark as deleted without removal)."""
+        if not ids:
+            return 0
+
+        with self._lock:
+            id_set = set(ids)
+            count = 0
+
+            # Update tombstoned records with metadata
+            for r in self._records:
+                if r.get("id") in id_set:
+                    r.update(metadata)
+                    count += 1
+
+            # Delete associated annotations
+            self._annotations = [
+                a for a in self._annotations if a["record_id"] not in id_set
+            ]
+
+            return count
 
     def close(self) -> None:
         """Close the backend and release resources."""
