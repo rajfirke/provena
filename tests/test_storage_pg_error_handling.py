@@ -52,5 +52,7 @@ def test_count_raises_runtime_error_when_no_row_returned():
 
 def test_add_annotation_raises_runtime_error_when_no_row_returned():
     backend = _make_backend_with_mock_pool()
+    cursor = backend._pool.connection.return_value.cursor.return_value
+    cursor.fetchone.side_effect = [(1,), None]
     with pytest.raises(RuntimeError, match="INSERT did not return an id"):
         backend.add_annotation(1, "note", "reviewer", "2026-01-01T00:00:00Z")
