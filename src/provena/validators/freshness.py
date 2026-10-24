@@ -124,6 +124,8 @@ class FreshnessChecker:
 
         Returns:
             A FreshnessResult with status FRESH, STALE, or UNKNOWN.
+            A provenance date or detected temporal marker that is later than
+            the reference time returns UNKNOWN.
         """
         reference = now or datetime.now(timezone.utc)
         # Normalize a caller-supplied naive `now` to UTC-aware, matching how
@@ -159,6 +161,14 @@ class FreshnessChecker:
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
 
+        # Future dates are suspicious - cannot verify freshness from future data
+        if created > now:
+            return FreshnessResult(
+                status="UNKNOWN",
+                details=f"Provenance created_at {created.date().isoformat()} is in the future",
+                detected_date=created,
+            )
+
         age = now - created
         if age <= self._threshold:
             return FreshnessResult(
@@ -181,6 +191,14 @@ class FreshnessChecker:
         newest = max(dates)
         if newest.tzinfo is None:
             newest = newest.replace(tzinfo=timezone.utc)
+
+        # Future dates are suspicious - cannot verify freshness from future data
+        if newest > now:
+            return FreshnessResult(
+                status="UNKNOWN",
+                details=f"Temporal marker detected: {newest.date().isoformat()} is in the future",
+                detected_date=newest,
+            )
 
         age = now - newest
         if age <= self._threshold:
