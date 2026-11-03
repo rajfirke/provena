@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 SCHEMA_VERSION = 1
@@ -81,6 +81,11 @@ class PostgreSQLBackend:
             min_size=min_pool_size,
             max_size=pool_size,
             open=True,
+            # The chain hash covers the timestamp string, and psycopg renders
+            # timestamptz in the session TimeZone. Pin every pooled connection
+            # to UTC so a read produces the same string that was hashed,
+            # whatever the server or database default happens to be.
+            kwargs={"options": "-c timezone=UTC"},
         )
         self._hasher = hasher
         self._init_schema()
@@ -281,6 +286,12 @@ def _row_to_dict(cursor: Any, row: tuple[Any, ...]) -> dict[str, Any]:
         d["truncated"] = 1 if d["truncated"] else 0
     ts = d.get("timestamp")
     if ts is not None and not isinstance(ts, str):
+        # ContextTrail hashes datetime.now(timezone.utc).isoformat(), so the
+        # offset has to come back as +00:00. An aware value in any other zone
+        # is the same instant rendered differently, and hashing it would
+        # report an untouched trail as broken.
+        if ts.tzinfo is not None:
+            ts = ts.astimezone(timezone.utc)
         d["timestamp"] = ts.isoformat()
     for json_field in ("provenance_json", "metadata_json"):
         val = d.get(json_field)
