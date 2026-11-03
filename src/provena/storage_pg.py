@@ -268,6 +268,37 @@ class PostgreSQLBackend:
             cols = [desc[0] for desc in cur.description]
             return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
+    def tombstone_by_ids(
+        self, ids: list[int], metadata: dict[str, Any]
+    ) -> int:
+        """Tombstone records by their IDs (mark as deleted without removal)."""
+        if not ids:
+            return 0
+
+        self._check_open()
+        with self._pool.connection() as conn:
+            with conn.cursor() as cur:
+                # Delete annotations first (foreign key)
+                cur.execute(
+                    "DELETE FROM annotations WHERE record_id = ANY(%s)",
+                    (ids,),
+                )
+
+                # Build UPDATE statement from metadata
+                if metadata:
+                    set_clause = ", ".join(
+                        [f"{key} = %s" for key in metadata.keys()]
+                    )
+                    values = list(metadata.values()) + [ids]
+                    cur.execute(
+                        f"UPDATE trail SET {set_clause} WHERE id = ANY(%s)",
+                        values,
+                    )
+
+            conn.commit()
+
+        return len(ids)
+
     def close(self) -> None:
         if self._pool is not None:
             self._pool.close()
