@@ -187,3 +187,42 @@ class TestPostgreSQLImportError:
 
         with pytest.raises(ImportError, match="psycopg"):
             PostgreSQLBackend(conninfo="postgresql://localhost/test")
+
+
+class TestPostgreSQLTipRepairReceipt:
+    def test_returned_record_matches_stored_row_after_tip_repair(self, pg_backend):
+        # Regression for #231. PostgreSQLBackend.append holds an advisory lock
+        # and, when the submitted previous_hash is no longer the tip, recomputes
+        # both hashes and stores the repaired pair. Those values used to stay
+        # local to append(), so the TrailRecord handed back to the caller
+        # described a link that is not in the row. The value log() returns is
+        # the tamper-evident receipt, so a reviewer recomputing from it has to
+        # land on what the database holds.
+        from provena import ContextTrail
+
+        writer_a = ContextTrail(storage_path=_pg_conninfo)
+        writer_b = ContextTrail(storage_path=_pg_conninfo)
+        try:
+            writer_a.log("from writer A", source="retriever")
+
+            # writer_b still holds the tip it read when it was constructed, so
+            # this insert goes through the repair branch.
+            record = writer_b.log("from writer B", source="retriever")
+            stored = writer_b._backend.get(record.id)
+
+            assert stored is not None
+            assert record.chain_hash == stored["chain_hash"]
+            assert record.previous_hash == stored["previous_hash"]
+
+            # The writer that lost the race must not keep submitting the stale
+            # tip on its next call.
+            follow_up = writer_b.log("second from writer B", source="retriever")
+            stored_follow_up = writer_b._backend.get(follow_up.id)
+
+            assert stored_follow_up is not None
+            assert follow_up.chain_hash == stored_follow_up["chain_hash"]
+            assert follow_up.previous_hash == stored_follow_up["previous_hash"]
+            assert writer_b.verify_chain().intact
+        finally:
+            writer_a.close()
+            writer_b.close()

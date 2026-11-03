@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **PostgreSQL tip repair now reports the hashes it stored.** `PostgreSQLBackend.append()` takes an advisory lock and, when the submitted `previous_hash` is no longer the tip, recomputes `chain_hash` and `previous_hash` and inserts the repaired pair. Those values stayed local to `append()`, so after two writers raced the `TrailRecord` returned by `log()` described a link that was not in the row, and the writer that lost the race kept submitting the stale tip. `append()` now writes the stored pair back onto the record, and `_log_internal` reads it back for both `_previous_hash` and the returned record (#231)
 - **`verify_chain()` takes a consistent snapshot under the trail lock.** Flush (when buffering) and `all_records()` now share `log()`'s lock, so a concurrent append cannot land between them. The hash walk still runs after the lock is released. `total_records` matches the snapshot captured for that call (#198)
 
 ## [1.3.1] - 2026-10-04
