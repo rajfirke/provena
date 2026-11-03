@@ -243,18 +243,25 @@ class PostgreSQLBackend:
         self, record_id: int, note: str, reviewer: str, timestamp: str
     ) -> int:
         self._check_open()
-        with self._pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO annotations (record_id, note, reviewer, timestamp) "
-                    "VALUES (%s, %s, %s, %s) RETURNING id",
-                    (record_id, note, reviewer, timestamp),
-                )
-                row = cur.fetchone()
-                if row is None:
-                    raise RuntimeError("INSERT did not return an id")
-                ann_id: int = row[0]
-            conn.commit()
+        try:
+            with self._pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO annotations (record_id, note, reviewer, timestamp) "
+                        "VALUES (%s, %s, %s, %s) RETURNING id",
+                        (record_id, note, reviewer, timestamp),
+                    )
+                    row = cur.fetchone()
+                    if row is None:
+                        raise RuntimeError("INSERT did not return an id")
+                    ann_id: int = row[0]
+                conn.commit()
+        except Exception as exc:
+            # Keep PostgreSQL's race-safe foreign-key enforcement while
+            # matching the storage contract of the in-memory and SQLite backends.
+            if getattr(exc, "sqlstate", None) == "23503":
+                raise ValueError(f"Record {record_id} does not exist") from exc
+            raise
         return ann_id
 
     def get_annotations(self, record_id: int) -> list[dict[str, Any]]:

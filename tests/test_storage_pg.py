@@ -143,6 +143,12 @@ class TestPostgreSQLBackendAnnotations:
         assert anns[0]["note"] == "reviewed"
         assert anns[0]["reviewer"] == "admin"
 
+    def test_add_annotation_missing_record_raises_value_error(self, pg_backend):
+        with pytest.raises(ValueError, match="Record 999 does not exist"):
+            pg_backend.add_annotation(
+                999, "orphan", "reviewer", "2026-07-18T12:00:00Z"
+            )
+
     def test_get_annotations_empty(self, pg_backend):
         pg_backend.append(_make_record())
         assert pg_backend.get_annotations(1) == []
