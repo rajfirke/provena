@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **Docs for PostgreSQL, buffered writes, TOML config, and the newer CLI commands.** The site now has a PostgreSQL guide and a buffered-write guide. The configuration page documents `ContextTrail(config=path)`, `signing_key_env`, buffer settings, and policy entries. The CLI reference covers `stats`, `retain`, `migrate`, and `mcp serve` (#56)
+
 ### Fixed
 
 - **`verify_chain()` takes a consistent snapshot under the trail lock.** Flush (when buffering) and `all_records()` now share `log()`'s lock, so a concurrent append cannot land between them. The hash walk still runs after the lock is released. `total_records` matches the snapshot captured for that call (#198)
