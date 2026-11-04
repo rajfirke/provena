@@ -103,6 +103,45 @@ class TestTrailAggregatorClose:
         assert planner._backend._conn is None
         assert executor._backend._conn is None
 
+    def test_close_reports_pending_buffered_records_until_retry(
+        self, tmp_path, monkeypatch
+    ):
+        db_path = tmp_path / "buffered.db"
+        trail = ContextTrail(
+            storage_path=str(db_path),
+            buffered=True,
+            buffer_size=10,
+            flush_interval=60,
+        )
+        agg = TrailAggregator()
+        agg.add("planner", trail)
+        trail.log("pending record", source="agent")
+
+        append = trail._backend.append
+        should_fail = True
+
+        def fail_until_recovered(record):
+            if should_fail:
+                raise OSError("simulated transient storage failure")
+            return append(record)
+
+        monkeypatch.setattr(trail._backend, "append", fail_until_recovered)
+        try:
+            assert agg.close() == 1
+            assert trail._backend._conn is not None
+            should_fail = False
+            assert agg.close() == 0
+            assert trail._backend._conn is None
+        finally:
+            should_fail = False
+            agg.close()
+
+        reopened = ContextTrail(storage_path=str(db_path))
+        try:
+            assert reopened.record_count == 1
+        finally:
+            reopened.close()
+
     def test_close_closes_remaining_trails_when_one_raises(self, tmp_path):
         agg = TrailAggregator()
         planner = ContextTrail(storage_path=str(tmp_path / "planner.db"))

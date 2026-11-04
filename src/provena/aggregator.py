@@ -459,19 +459,21 @@ class TrailAggregator:
         """Return all handoff edges for a specific run/task ID."""
         return tuple(h for h in self._handoffs if h.run_id == run_id)
 
-    def close(self) -> None:
+    def close(self) -> int:
         """Close all registered trails.
 
         Closing continues even if a trail raises, so one failing trail
         cannot leak the backends of the trails registered after it. If any
         trail failed to close, the first exception is raised after every
         trail has had a chance to close; any additional exceptions are
-        logged rather than dropped silently.
+        logged rather than dropped silently. Otherwise, return the total
+        number of buffered records still pending across the trails.
         """
         errors: list[Exception] = []
+        pending = 0
         for trail in self._trails.values():
             try:
-                trail.close()
+                pending += trail.close()
             except Exception as exc:
                 errors.append(exc)
 
@@ -482,6 +484,7 @@ class TrailAggregator:
                     exc_info=extra_error,
                 )
             raise errors[0]
+        return pending
 
     def __enter__(self) -> TrailAggregator:
         return self
