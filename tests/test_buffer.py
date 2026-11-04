@@ -320,6 +320,10 @@ class TestWriteBuffer:
 
 
 class TestContextTrailBuffered:
+    def test_unbuffered_close_returns_zero(self):
+        trail = ContextTrail(backend="memory")
+        assert trail.close() == 0
+
     def test_buffered_log_and_flush(self):
         trail = ContextTrail(
             backend="memory", buffered=True, buffer_size=100, flush_interval=60
