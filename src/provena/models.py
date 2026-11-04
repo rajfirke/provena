@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
+
+_logger = logging.getLogger("provena.models")
 
 
 class ContextSource(str, Enum):
@@ -305,6 +308,11 @@ def _parse_source(
     try:
         source_enum = ContextSource(parts[0])
     except ValueError:
+        _logger.warning(
+            "Unknown context source %r; recording it as %r",
+            parts[0],
+            ContextSource.CUSTOM.value,
+        )
         source_enum = ContextSource.CUSTOM
 
     if len(parts) > 1 and not source_name:

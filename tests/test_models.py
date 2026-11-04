@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import datetime, timezone
 
 from provena.models import (
@@ -297,6 +298,31 @@ class TestChainVerdict:
 
 
 class TestParseSource:
+    def test_unknown_source_warns_and_falls_back_to_custom(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="provena"):
+            src, name = _parse_source("retreiver", "")
+        assert src == ContextSource.CUSTOM
+        assert name == "retreiver"
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert warnings[0].name.startswith("provena")
+        assert "'retreiver'" in warnings[0].getMessage()
+
+    def test_unknown_source_with_colon_warns(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="provena"):
+            src, name = _parse_source("vectordb:pinecone", "")
+        assert src == ContextSource.CUSTOM
+        assert name == "pinecone"
+        assert "'vectordb'" in caplog.text
+
+    def test_known_sources_do_not_warn(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="provena"):
+            for value in ContextSource:
+                _parse_source(value.value, "")
+                _parse_source(f"{value.value}:name", "")
+                _parse_source(value, "")
+        assert caplog.records == []
+
     def test_enum_input(self):
         src, name = _parse_source(ContextSource.RETRIEVER, "my_ret")
         assert src == ContextSource.RETRIEVER
