@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from datetime import datetime
 from typing import Any
 
@@ -410,7 +411,14 @@ def serve(ctx: click.Context, db: str | None, transport: str) -> None:
         server = create_server()
         server.run(transport=transport)
     finally:
-        trail.close()
+        pending = trail.close()
+        if pending:
+            click.echo(
+                f"{pending} buffered record(s) could not be persisted during shutdown",
+                err=True,
+            )
+            if sys.exc_info()[0] is None:
+                ctx.exit(1)
 
 
 @cli.command()

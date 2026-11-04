@@ -949,7 +949,7 @@ class TestCLIMcpServe:
     """Regression tests for #148: `mcp serve` must close the trail even when
     configure()/create_server()/server.run() raise, and on normal shutdown."""
 
-    def _patch(self, monkeypatch, run_side_effect=None):
+    def _patch(self, monkeypatch, run_side_effect=None, pending_records=0):
         import provena.cli.main as main_mod
         import provena.mcp_server as mcp_mod
 
@@ -961,6 +961,7 @@ class TestCLIMcpServe:
 
             def close(self):
                 closed["count"] += 1
+                return pending_records
 
         class _FakeServer:
             def run(self, transport="stdio"):
@@ -987,6 +988,36 @@ class TestCLIMcpServe:
         result = CliRunner().invoke(cli, ["--db", str(db_path), "mcp", "serve"])
         assert result.exit_code != 0
         assert isinstance(result.exception, RuntimeError)
+        assert closed["count"] == 1
+
+    def test_serve_reports_pending_records_and_fails_on_normal_shutdown(
+        self, monkeypatch, tmp_path
+    ):
+        closed = self._patch(monkeypatch, pending_records=2)
+        db_path = tmp_path / "audit.db"
+        db_path.write_bytes(b"")
+
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "mcp", "serve"])
+
+        assert result.exit_code == 1
+        assert "2 buffered record(s) could not be persisted" in result.output
+        assert closed["count"] == 1
+
+    def test_serve_preserves_run_error_when_close_has_pending_records(
+        self, monkeypatch, tmp_path
+    ):
+        closed = self._patch(
+            monkeypatch,
+            run_side_effect=RuntimeError("boom"),
+            pending_records=2,
+        )
+        db_path = tmp_path / "audit.db"
+        db_path.write_bytes(b"")
+
+        result = CliRunner().invoke(cli, ["--db", str(db_path), "mcp", "serve"])
+
+        assert isinstance(result.exception, RuntimeError)
+        assert "2 buffered record(s) could not be persisted" in result.output
         assert closed["count"] == 1
 
     def test_serve_missing_database_does_not_create_file(self, tmp_path):

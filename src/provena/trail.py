@@ -949,13 +949,23 @@ class ContextTrail:
             return self._buffer.flush()
         return 0
 
-    def close(self) -> None:
-        """Close the storage backend and release resources."""
-        try:
-            if self._buffer is not None:
-                self._buffer.close()
-        finally:
+    def close(self) -> int:
+        """Close the backend and return any buffered records still pending.
+
+        When buffered records remain, the backend stays open so close() can be
+        retried after the storage backend recovers.
+        """
+        if self._buffer is None:
             self._backend.close()
+            return 0
+
+        pending = 0
+        try:
+            pending = self._buffer.close()
+        finally:
+            if not self._buffer.pending_records:
+                self._backend.close()
+        return pending
 
     def _handle_error(self, exc: Exception) -> None:
         with self._lock:
