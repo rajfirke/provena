@@ -72,7 +72,6 @@ nav:
     - Provenance Validation: guide/provenance.md
     - Freshness Checking: guide/freshness.md
     - Chain Verification: guide/verification.md
-    - Policy Engine: guide/policies.md
     - Configuration: guide/configuration.md
     - Testing: guide/testing.md
   - Integrations:

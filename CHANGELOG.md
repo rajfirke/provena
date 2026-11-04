@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Fixed
+
+- **Future dates no longer produce false FRESH results.** Freshness checking now returns UNKNOWN when provenance timestamps or detected content dates are later than the reference time.
+
 ## [1.3.1] - 2026-10-04
 
 ### Added
