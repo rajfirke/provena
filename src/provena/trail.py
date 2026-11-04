@@ -97,7 +97,8 @@ class ContextTrail:
             required_fields: Provenance fields to require for VALID status.
             max_age_days: Content older than this is marked STALE.
             temporal_detection: Enable regex-based date detection in content text.
-            max_content_bytes: Truncate content beyond this size.
+            max_content_bytes: Mark larger inputs as truncated; the full input is
+                still hashed.
             signing_key: HMAC key for signed hash chains. Also read from
                 ``PROVENA_SIGNING_KEY`` env var.
             otel_enabled: Emit OpenTelemetry spans for each logged entry.

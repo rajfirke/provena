@@ -3,8 +3,9 @@
 Provena maintains a SHA-256 hash chain across all audit records, creating a
 tamper-evident log. If a record's hashed fields are modified, or a record is
 deleted or reordered, the chain breaks and verification fails. This gives you
-cryptographic proof that a record's content, source, timestamp, and position
-in the chain have not been altered.
+tamper evidence for the recorded content digest, source, timestamp, and chain
+position. Because Provena does not store raw context, chain verification cannot
+independently recompute a content digest without the original input.
 
 Chain verification does **not** cover every column on a record. The hash
 payload is only `previous_hash`, `content_hash`, `source`, and `timestamp`
@@ -23,6 +24,12 @@ Each record's chain hash is computed from four inputs:
 2. The **content hash** (SHA-256 of the raw context bytes)
 3. The **source type** string
 4. The **timestamp** in ISO format
+
+New entries hash the full original content bytes, even when the input exceeds
+`max_content_bytes`; `truncated` records whether the threshold was exceeded.
+Provena stores the digest rather than the raw input, so `verify_chain()` checks
+the recorded digest's place in the chain but cannot independently recompute it
+without the original content. Existing records keep their historical hashes.
 
 The computation follows a Merkle-style pattern:
 
