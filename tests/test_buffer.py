@@ -73,6 +73,43 @@ class TestWriteBuffer:
         buf.close()
         assert backend.count() == 5
 
+    def test_close_reports_pending_records_and_can_retry(self, caplog):
+        backend = InMemoryBackend()
+        real_append = backend.append
+        calls = 0
+
+        def flaky_append(record):
+            nonlocal calls
+            calls += 1
+            if calls <= 2:
+                raise OSError("simulated backend outage")
+            return real_append(record)
+
+        backend.append = flaky_append  # type: ignore[method-assign]
+
+        buf = WriteBuffer(backend, buffer_size=100, flush_interval=60)
+        buf.append(
+            {
+                "content_hash": "pending",
+                "source": "r",
+                "source_name": "t",
+                "timestamp": "2026-07-20T00:00:00Z",
+                "chain_hash": "c",
+                "previous_hash": "p",
+            }
+        )
+
+        with caplog.at_level("WARNING", logger="provena.buffer"):
+            assert buf.close() == 1
+
+        assert buf.pending == 1
+        assert backend.count() == 0
+        assert "1 remaining" in caplog.text
+
+        assert buf.close() == 0
+        assert buf.pending == 0
+        assert backend.count() == 1
+
     def test_periodic_flush(self):
         backend = InMemoryBackend()
         buf = WriteBuffer(backend, buffer_size=1000, flush_interval=0.1)
@@ -336,6 +373,45 @@ class TestContextTrailBuffered:
         trail.close()
         # After close, records should have been flushed
         # Can't query after close, but buffer should be empty
+
+    def test_close_keeps_backend_open_until_pending_records_flush(self, caplog):
+        trail = ContextTrail(
+            backend="memory", buffered=True, buffer_size=100, flush_interval=60
+        )
+        real_append = trail._backend.append
+        real_close = trail._backend.close
+        calls = 0
+        close_calls = 0
+
+        def flaky_append(record):
+            nonlocal calls
+            calls += 1
+            if calls <= 2:
+                raise OSError("simulated backend outage")
+            return real_append(record)
+
+        def track_close():
+            nonlocal close_calls
+            close_calls += 1
+            real_close()
+
+        trail._backend.append = flaky_append  # type: ignore[method-assign]
+        trail._backend.close = track_close  # type: ignore[method-assign]
+        trail.log("pending", source="retriever")
+
+        with caplog.at_level("WARNING", logger="provena.buffer"):
+            assert trail.close() == 1
+
+        assert trail._buffer is not None
+        assert trail._buffer.pending == 1
+        assert close_calls == 0
+        assert trail._backend.count() == 0
+        assert "1 remaining" in caplog.text
+
+        assert trail.close() == 0
+        assert trail._buffer.pending == 0
+        assert close_calls == 1
+        assert trail._backend.count() == 1
 
     def test_close_closes_backend_even_if_buffer_close_raises(self, tmp_path):
         db_path = str(tmp_path / "trail.db")
