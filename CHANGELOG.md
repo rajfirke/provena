@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+
+- **PostgreSQL advisory lock key is derived from the trail identity, not the literal `1`.** The default is `hashtext(current_database() || 'provena:trail')`. `PostgreSQLBackend` and `ContextTrail` accept an optional `advisory_lock_key` (an int or an int pair) so separate trails in one database do not serialize on each other (#248)
+
 ### Fixed
 
 - **`verify_chain()` takes a consistent snapshot under the trail lock.** Flush (when buffering) and `all_records()` now share `log()`'s lock, so a concurrent append cannot land between them. The hash walk still runs after the lock is released. `total_records` matches the snapshot captured for that call (#198)
