@@ -131,14 +131,14 @@ class ContextEntry:
     """Immutable representation of a single context input with its content hash.
 
     Attributes:
-        content_hash: SHA-256 hex digest of the content bytes.
+        content_hash: SHA-256 hex digest of the full original content bytes.
         source: The type of source that produced this context.
         source_name: Human-readable name identifying the specific source.
         timestamp: When this entry was recorded.
         provenance: Optional origin metadata for validation.
         metadata: Arbitrary key-value pairs attached to the entry.
         content_type: The original content type (``"str"``, ``"bytes"``, or ``"json"``).
-        truncated: Whether the content was truncated to fit max_content_bytes.
+        truncated: Whether the input exceeded max_content_bytes.
     """
 
     content_hash: str
@@ -176,7 +176,8 @@ class ContextEntry:
             source_name: Optional explicit name; inferred from source if omitted.
             provenance: Optional origin metadata for validation.
             metadata: Arbitrary key-value pairs to attach.
-            max_content_bytes: Truncate content beyond this size. Defaults to 64 KB.
+            max_content_bytes: Mark larger inputs as truncated. The full input is
+                still hashed. Defaults to 64 KB.
             timestamp: Override the recording timestamp. Defaults to UTC now.
 
         Returns:
@@ -328,8 +329,4 @@ def _prepare_content(
         content_bytes = json.dumps(content, default=str).encode("utf-8")
         content_type = "json"
 
-    truncated = len(content_bytes) > max_content_bytes
-    if truncated:
-        content_bytes = content_bytes[:max_content_bytes]
-
-    return content_bytes, content_type, truncated
+    return content_bytes, content_type, len(content_bytes) > max_content_bytes
