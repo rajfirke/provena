@@ -720,6 +720,9 @@ class ContextTrail:
     ) -> list[dict[str, Any]]:
         """Return trail rows matching the filters, oldest first.
 
+        Naive timestamp bounds are interpreted as UTC, and aware bounds
+        are converted to UTC. Both bounds are inclusive.
+
         When buffering is enabled, unflushed records are included. Those rows
         have not been assigned a backend id yet and are returned with
         ``id=-1``. Filters match ``InMemoryBackend.query`` (string timestamp
@@ -730,6 +733,8 @@ class ContextTrail:
         if offset < 0:
             raise ValueError(f"offset must be >= 0, got {offset}")
 
+        start = _utc_query_bound(start)
+        end = _utc_query_bound(end)
         source_str = source.value if isinstance(source, ContextSource) else source
         if self._buffer is None:
             return self._backend.query(
@@ -1004,6 +1009,15 @@ def _resolve_signing_key(key: str | bytes | None) -> bytes | None:
     if isinstance(key, str):
         return key.encode("utf-8")
     return key
+
+
+def _utc_query_bound(bound: datetime | None) -> datetime | None:
+    """Normalize a query bound to UTC, treating a naive value as UTC."""
+    if bound is None:
+        return None
+    if bound.utcoffset() is None:
+        return bound.replace(tzinfo=timezone.utc)
+    return bound.astimezone(timezone.utc)
 
 
 def _query_row(record: dict[str, Any]) -> dict[str, Any]:
