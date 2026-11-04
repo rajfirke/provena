@@ -8,6 +8,18 @@ from typing import Any
 
 SCHEMA_VERSION = 1
 
+# Keep this expression stable: every single-trail deployment must derive the same key.
+_DEFAULT_ADVISORY_LOCK_SQL = (
+    "SELECT pg_advisory_xact_lock(hashtext(current_database() || 'provena:trail'))"
+)
+
+_MIN_INT32 = -(2**31)
+_MAX_INT32 = 2**31 - 1
+_MIN_INT64 = -(2**63)
+_MAX_INT64 = 2**63 - 1
+
+AdvisoryLockKey = int | tuple[int, int] | list[int]
+
 _CREATE_TRAIL = """\
 CREATE TABLE IF NOT EXISTS trail (
     id                BIGSERIAL PRIMARY KEY,
@@ -54,12 +66,59 @@ CREATE TABLE IF NOT EXISTS provena_meta (
 """
 
 
+def _coerce_advisory_lock_key(
+    key: AdvisoryLockKey | None,
+) -> int | tuple[int, int] | None:
+    """Validate and normalize an advisory lock key.
+
+    ``None`` means the default trail-derived key. A single integer maps to
+    PostgreSQL's one-argument ``pg_advisory_xact_lock(bigint)``; a pair maps
+    to the two-argument ``pg_advisory_xact_lock(int, int)`` overload.
+
+    Raises:
+        ValueError: If the key is not an int or a pair of ints, or if a value
+            does not fit the PostgreSQL advisory lock argument range.
+    """
+    if key is None:
+        return None
+    if isinstance(key, bool):
+        raise ValueError("advisory_lock_key must be an int or a pair of ints")
+    if isinstance(key, int):
+        if not _MIN_INT64 <= key <= _MAX_INT64:
+            raise ValueError(
+                "advisory_lock_key int must fit in a signed 64-bit integer"
+            )
+        return key
+    if isinstance(key, (tuple, list)):
+        if len(key) != 2 or any(
+            isinstance(part, bool) or not isinstance(part, int) for part in key
+        ):
+            raise ValueError("advisory_lock_key must be an int or a pair of ints")
+        first, second = key
+        if not (
+            _MIN_INT32 <= first <= _MAX_INT32 and _MIN_INT32 <= second <= _MAX_INT32
+        ):
+            raise ValueError(
+                "advisory_lock_key pair values must fit in signed 32-bit integers"
+            )
+        return (first, second)
+    raise ValueError("advisory_lock_key must be an int or a pair of ints")
+
+
 class PostgreSQLBackend:
     """PostgreSQL-based storage backend with connection pooling.
 
     Uses psycopg v3 with ``psycopg_pool.ConnectionPool`` for concurrent
     access. Chain hash ordering is enforced via ``pg_advisory_xact_lock``.
+
+    By default the lock key is derived from the database and trail identity
+    (``hashtext(current_database() || 'provena:trail')``), so separate
+    single-trail deployments do not serialize on a magic constant. Distinct
+    trails sharing one database can pass an explicit ``advisory_lock_key``
+    (an int or a ``(int, int)`` pair) to use independent lock scopes.
     """
+
+    _advisory_lock_key: int | tuple[int, int] | None = None
 
     def __init__(
         self,
@@ -67,7 +126,9 @@ class PostgreSQLBackend:
         pool_size: int = 5,
         min_pool_size: int = 1,
         hasher: Any = None,
+        advisory_lock_key: AdvisoryLockKey | None = None,
     ) -> None:
+        lock_key = _coerce_advisory_lock_key(advisory_lock_key)
         try:
             from psycopg_pool import ConnectionPool
         except ImportError:
@@ -83,7 +144,17 @@ class PostgreSQLBackend:
             open=True,
         )
         self._hasher = hasher
+        self._advisory_lock_key = lock_key
         self._init_schema()
+
+    def _advisory_lock_sql(self) -> tuple[str, tuple[Any, ...]]:
+        """Return the advisory lock statement and its parameters."""
+        key = self._advisory_lock_key
+        if key is None:
+            return _DEFAULT_ADVISORY_LOCK_SQL, ()
+        if isinstance(key, tuple):
+            return "SELECT pg_advisory_xact_lock(%s, %s)", key
+        return "SELECT pg_advisory_xact_lock(%s)", (key,)
 
     def _init_schema(self) -> None:
         with self._pool.connection() as conn:
@@ -110,7 +181,8 @@ class PostgreSQLBackend:
         self._check_open()
         with self._pool.connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT pg_advisory_xact_lock(1)")
+                lock_sql, lock_params = self._advisory_lock_sql()
+                cur.execute(lock_sql, lock_params)
 
                 chain_hash = record["chain_hash"]
                 previous_hash = record["previous_hash"]

@@ -86,6 +86,7 @@ class ContextTrail:
         buffered: bool = False,
         buffer_size: int = 500,
         flush_interval: float = 1.0,
+        advisory_lock_key: int | tuple[int, int] | list[int] | None = None,
         config: dict[str, Any] | str | Path | None = None,
     ) -> None:
         """Initialize a ContextTrail.
@@ -108,6 +109,8 @@ class ContextTrail:
             buffered: If True, batch writes via a background thread.
             buffer_size: Flush when buffer reaches this many records.
             flush_interval: Seconds between periodic flushes.
+            advisory_lock_key: Optional PostgreSQL advisory lock key (an int
+                or ``(int, int)`` pair). Defaults to the trail-derived key.
             config: Configuration dict, or path to a ``.toml``/``.yaml`` file.
 
         Raises:
@@ -123,6 +126,8 @@ class ContextTrail:
                 overridden.append("signing_key")
             if strict_mode:
                 overridden.append("strict_mode")
+            if advisory_lock_key is not None:
+                overridden.append("advisory_lock_key")
             if overridden:
                 _logger.warning(
                     "config= overrides all other parameters; these will be ignored: %s",
@@ -161,7 +166,9 @@ class ContextTrail:
             from provena.storage_pg import PostgreSQLBackend
 
             self._backend = PostgreSQLBackend(
-                conninfo=storage_path, hasher=self._hasher
+                conninfo=storage_path,
+                hasher=self._hasher,
+                advisory_lock_key=advisory_lock_key,
             )  # type: ignore[assignment]
         else:
             self._backend = SQLiteBackend(path=storage_path)
@@ -238,6 +245,7 @@ class ContextTrail:
                 conninfo=storage_path,
                 pool_size=storage.get("pool_size", 5),
                 hasher=self._hasher,
+                advisory_lock_key=storage.get("advisory_lock_key"),
             )
         else:
             self._backend = SQLiteBackend(path=storage_path)
