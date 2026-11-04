@@ -80,8 +80,13 @@ class StorageBackend(Protocol):
         limit: int = 100,
         offset: int = 0,
         run_id: str | None = None,
+        order: str = "asc",
     ) -> list[dict[str, Any]]:
-        """Query records with optional filters."""
+        """Query records with optional filters.
+
+        Args:
+            order: ``"asc"`` (oldest first, default) or ``"desc"`` (newest first).
+        """
         ...
 
     def add_annotation(
@@ -220,8 +225,15 @@ class SQLiteBackend:
         limit: int = 100,
         offset: int = 0,
         run_id: str | None = None,
+        order: str = "asc",
     ) -> list[dict[str, Any]]:
-        """Query records with optional filters."""
+        """Query records with optional filters.
+
+        Args:
+            order: ``"asc"`` (oldest first) or ``"desc"`` (newest first).
+        """
+        if order not in ("asc", "desc"):
+            raise ValueError(f"order must be 'asc' or 'desc', got {order!r}")
         clauses: list[str] = []
         params: list[Any] = []
 
@@ -244,7 +256,8 @@ class SQLiteBackend:
             clauses.append("json_extract(metadata_json, '$.run_id') = ?")
             params.append(run_id)
         where = " AND ".join(clauses) if clauses else "1=1"
-        sql = f"SELECT * FROM trail WHERE {where} ORDER BY id ASC LIMIT ? OFFSET ?"
+        direction = "ASC" if order == "asc" else "DESC"
+        sql = f"SELECT * FROM trail WHERE {where} ORDER BY id {direction} LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
         with self._lock:
@@ -345,8 +358,15 @@ class InMemoryBackend:
         limit: int = 100,
         offset: int = 0,
         run_id: str | None = None,
+        order: str = "asc",
     ) -> list[dict[str, Any]]:
-        """Query records with optional filters."""
+        """Query records with optional filters.
+
+        Args:
+            order: ``"asc"`` (oldest first) or ``"desc"`` (newest first).
+        """
+        if order not in ("asc", "desc"):
+            raise ValueError(f"order must be 'asc' or 'desc', got {order!r}")
         with self._lock:
             results = list(self._records)
         if source is not None:
@@ -375,6 +395,8 @@ class InMemoryBackend:
                 for r in results
                 if json.loads(r["metadata_json"] or "{}").get("run_id") == run_id
             ]
+        if order == "desc":
+            results = list(reversed(results))
         return [{**r} for r in results[offset : offset + limit]]
 
     def add_annotation(
