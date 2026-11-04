@@ -81,6 +81,7 @@ def create_server(name: str = "provena-governance") -> Any:
             source=source,
             freshness_status=None,
             limit=limit,
+            order="desc",
         )
         stale = [r for r in records if r.get("freshness_status") == "STALE"]
         fresh = [r for r in records if r.get("freshness_status") == "FRESH"]
@@ -128,10 +129,14 @@ def create_server(name: str = "provena-governance") -> Any:
     ) -> str:
         """List context entries with governance violations (STALE/MISSING/INCOMPLETE)."""
         trail = get_trail()
-        stale = trail.query(source=source, freshness_status="STALE", limit=limit)
-        missing = trail.query(source=source, provenance_status="MISSING", limit=limit)
+        stale = trail.query(
+            source=source, freshness_status="STALE", limit=limit, order="desc"
+        )
+        missing = trail.query(
+            source=source, provenance_status="MISSING", limit=limit, order="desc"
+        )
         incomplete = trail.query(
-            source=source, provenance_status="INCOMPLETE", limit=limit
+            source=source, provenance_status="INCOMPLETE", limit=limit, order="desc"
         )
 
         violations = []
@@ -188,7 +193,7 @@ def create_server(name: str = "provena-governance") -> Any:
     def check_provenance(source: str | None = None, limit: int = 10) -> str:
         """Check provenance compliance for recent context entries."""
         trail = get_trail()
-        records = trail.query(source=source, limit=limit)
+        records = trail.query(source=source, limit=limit, order="desc")
         valid = [r for r in records if r.get("provenance_status") == "VALID"]
         missing = [r for r in records if r.get("provenance_status") == "MISSING"]
         incomplete = [r for r in records if r.get("provenance_status") == "INCOMPLETE"]

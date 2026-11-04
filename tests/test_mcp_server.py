@@ -470,3 +470,48 @@ class TestMCPResources:
         chain_data = self._read_resource_json(server, "provena://chain/status")
         assert chain_data["intact"] is True
         assert chain_data["total_records"] == 0
+
+
+@pytest.mark.skipif(not _has_fastmcp, reason="fastmcp not installed")
+def test_check_freshness_and_provenance_use_newest_records():
+    """MCP tools must inspect the most recent records, not the oldest (issue #241)."""
+    trail = ContextTrail(backend="memory")
+    now = datetime.now(timezone.utc)
+    # Older records: all FRESH / VALID
+    for i in range(15):
+        trail.log(
+            f"old-{i}",
+            source="retriever",
+            source_name=f"old-{i}",
+            provenance=ProvenanceMetadata(
+                source_url="https://example.com",
+                created_at=now - timedelta(hours=1),
+            ),
+        )
+    # Newest records: STALE / MISSING
+    trail.log(
+        "stale-newest",
+        source="tool",
+        source_name="stale-newest",
+        provenance=ProvenanceMetadata(
+            source_url="https://example.com",
+            created_at=now - timedelta(days=200),
+        ),
+    )
+    trail.log("missing-newest", source="agent", source_name="missing-newest")
+    configure(trail)
+    try:
+        fresh_result = _call_tool(create_server(), "check_freshness", {"limit": 5})
+        # Newest 5 should include the two problematic ones
+        assert fresh_result["total_checked"] == 5
+        assert fresh_result["stale"] == 1
+        assert any(
+            e["source_name"] == "stale-newest"
+            for e in fresh_result.get("stale_entries", [])
+        )
+
+        prov_result = _call_tool(create_server(), "check_provenance", {"limit": 5})
+        assert prov_result["total_checked"] == 5
+        assert prov_result["missing"] >= 1
+    finally:
+        trail.close()

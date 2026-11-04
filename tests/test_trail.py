@@ -599,6 +599,25 @@ class TestContextTrailQuery:
         results = memory_trail.query(limit=3)
         assert len(results) == 3
 
+    def test_query_order_desc_returns_newest(self, memory_trail):
+        for i in range(10):
+            memory_trail.log(f"entry_{i}", source="retriever")
+
+        asc = memory_trail.query(limit=3)
+        desc = memory_trail.query(limit=3, order="desc")
+        assert [r["source_name"] for r in asc] == [
+            "retriever",
+            "retriever",
+            "retriever",
+        ]
+        # IDs confirm order: oldest first vs newest first
+        assert [r["id"] for r in asc] == [1, 2, 3]
+        assert [r["id"] for r in desc] == [10, 9, 8]
+
+    def test_query_order_invalid(self, memory_trail):
+        with pytest.raises(ValueError, match="order must be"):
+            memory_trail.query(order="sideways")
+
     def test_query_rejects_zero_limit(self, trail):
         # limit=0 previously returned no records silently (SQLite "LIMIT 0").
         trail.log("a", source="retriever")
