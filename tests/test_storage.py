@@ -575,3 +575,65 @@ class TestGetAnnotations:
             backend2.close()
         finally:
             os.unlink(db_path)
+
+
+class TestTombstoneByIds:
+    """Test the tombstone_by_ids() method across all backends."""
+
+    @pytest.mark.parametrize("backend_name", ["memory_backend", "sqlite_backend"])
+    def test_tombstone_by_ids_single_record(self, request, backend_name):
+        """Test tombstoning a single record by ID."""
+        backend = request.getfixturevalue(backend_name)
+        id1 = backend.append(_make_record(content_hash="h1"))
+        id2 = backend.append(_make_record(content_hash="h2"))
+        id3 = backend.append(_make_record(content_hash="h3"))
+
+        metadata = {
+            "source_name": "retained",
+            "provenance_json": None,
+            "missing_fields": "",
+        }
+        tombstoned = backend.tombstone_by_ids([id2], metadata)
+        assert tombstoned == 1
+        assert backend.count() == 3  # Record still exists
+
+        # Record should still exist but be tombstoned
+        rec2 = backend.get(id2)
+        assert rec2 is not None
+        assert rec2["source_name"] == "retained"
+
+    @pytest.mark.parametrize("backend_name", ["memory_backend", "sqlite_backend"])
+    def test_tombstone_by_ids_cascades_annotations(self, request, backend_name):
+        """Test that tombstoning records cascades annotation deletion."""
+        backend = request.getfixturevalue(backend_name)
+        id1 = backend.append(_make_record(content_hash="h1"))
+        id2 = backend.append(_make_record(content_hash="h2"))
+
+        # Add annotations
+        ann1 = backend.add_annotation(id1, "note1", "alice", "2026-07-13T00:00:00")
+        ann2 = backend.add_annotation(id1, "note2", "bob", "2026-07-13T00:00:00")
+        ann3 = backend.add_annotation(id2, "note3", "charlie", "2026-07-13T00:00:00")
+
+        # Tombstone record 1
+        metadata = {"source_name": "retained"}
+        tombstoned = backend.tombstone_by_ids([id1], metadata)
+        assert tombstoned == 1
+
+        # Annotations for id1 should be gone
+        assert backend.get_annotations(id1) == []
+        # Annotations for id2 should remain
+        anns_id2 = backend.get_annotations(id2)
+        assert len(anns_id2) == 1
+        assert anns_id2[0]["note"] == "note3"
+
+    @pytest.mark.parametrize("backend_name", ["memory_backend", "sqlite_backend"])
+    def test_tombstone_by_ids_empty_list(self, request, backend_name):
+        """Test tombstoning with empty list (should return 0)."""
+        backend = request.getfixturevalue(backend_name)
+        id1 = backend.append(_make_record(content_hash="h1"))
+
+        metadata = {"source_name": "retained"}
+        tombstoned = backend.tombstone_by_ids([], metadata)
+        assert tombstoned == 0
+        assert backend.count() == 1
+
