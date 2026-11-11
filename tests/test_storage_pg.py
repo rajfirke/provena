@@ -75,6 +75,13 @@ class TestPostgreSQLBackendCRUD:
         assert fetched is not None
         assert fetched["content_hash"] == "abc123"
         assert fetched["source"] == "retriever"
+        assert fetched["content_hash_version"] == 1
+
+    def test_append_preserves_content_hash_version(self, pg_backend):
+        pg_backend.append(_make_record(content_hash_version=2))
+        fetched = pg_backend.get(1)
+        assert fetched is not None
+        assert fetched["content_hash_version"] == 2
 
     def test_get_nonexistent(self, pg_backend):
         assert pg_backend.get(9999) is None

@@ -11,10 +11,10 @@ Chain verification does **not** cover every column on a record. The hash
 payload is only `previous_hash`, `content_hash`, `source`, and `timestamp`
 (see below). Governance columns outside that payload -- `provenance_status`,
 `freshness_status`, `source_name`, `metadata_json`, `config_hash`,
-`content_type`, and `truncated` -- can be modified without breaking the
-chain. Chain verification proves a record's identity and ordering; it does
-not, on its own, prove every governance annotation attached to it is
-unchanged.
+`content_type`, `truncated`, and `content_hash_version` -- can be modified
+without breaking the chain. Chain verification proves a record's identity
+and ordering; it does not, on its own, prove every governance annotation
+attached to it is unchanged.
 
 ## How the Hash Chain Works
 
@@ -30,6 +30,12 @@ New entries hash the full original content bytes, even when the input exceeds
 Provena stores the digest rather than the raw input, so `verify_chain()` checks
 the recorded digest's place in the chain but cannot independently recompute it
 without the original content. Existing records keep their historical hashes.
+`content_hash_version` identifies the rule: version 1 hashes the historical
+truncated bytes, and version 2 hashes the full input. Version 2 is introduced
+by the first release containing this change; it is currently listed as
+Unreleased, and the latest published version is `v1.3.1`. Find legacy
+oversize entries where `content_hash_version = 1` and `truncated` is true
+(`truncated = 1` in SQLite; `truncated IS TRUE` in PostgreSQL).
 
 The computation follows a Merkle-style pattern:
 

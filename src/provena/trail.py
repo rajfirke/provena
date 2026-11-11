@@ -406,6 +406,7 @@ class ContextTrail:
                 "metadata_json": json.dumps(entry.metadata),
                 "content_type": entry.content_type,
                 "truncated": entry.truncated,
+                "content_hash_version": entry.content_hash_version,
             }
 
             if self._buffer is not None:

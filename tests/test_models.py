@@ -229,6 +229,7 @@ class TestContextEntry:
         )
         d = entry.to_dict()
         assert d["content_hash"] == entry.content_hash
+        assert d["content_hash_version"] == 2
         assert d["source"] == "retriever"
         assert d["source_name"] == "test"
         assert "timestamp" in d

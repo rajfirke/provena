@@ -139,6 +139,7 @@ class ContextEntry:
         metadata: Arbitrary key-value pairs attached to the entry.
         content_type: The original content type (``"str"``, ``"bytes"``, or ``"json"``).
         truncated: Whether the input exceeded max_content_bytes.
+        content_hash_version: Hashing rule used for this entry (2 hashes full input).
     """
 
     content_hash: str
@@ -149,6 +150,7 @@ class ContextEntry:
     metadata: dict[str, Any] = field(default_factory=dict)
     content_type: str = "str"
     truncated: bool = False
+    content_hash_version: int = 2
 
     def __repr__(self) -> str:
         return (
@@ -211,6 +213,7 @@ class ContextEntry:
             "metadata": self.metadata,
             "content_type": self.content_type,
             "truncated": self.truncated,
+            "content_hash_version": self.content_hash_version,
         }
 
 
