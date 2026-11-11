@@ -109,8 +109,9 @@ class ContextTrail:
             buffered: If True, batch writes via a background thread.
             buffer_size: Flush when buffer reaches this many records.
             flush_interval: Seconds between periodic flushes.
-            advisory_lock_key: Optional PostgreSQL advisory lock key (an int
-                or ``(int, int)`` pair). Defaults to the trail-derived key.
+            advisory_lock_key: Optional PostgreSQL advisory lock key (an int or
+                ``(int, int)`` pair). Defaults to ``1``; set it only for a second
+                chain in the same database, with the same key on every writer.
             config: Configuration dict, or path to a ``.toml``/``.yaml`` file.
 
         Raises:

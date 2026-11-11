@@ -8,10 +8,8 @@ from typing import Any
 
 SCHEMA_VERSION = 1
 
-# Keep this expression stable: every single-trail deployment must derive the same key.
-_DEFAULT_ADVISORY_LOCK_SQL = (
-    "SELECT pg_advisory_xact_lock(hashtext(current_database() || 'provena:trail'))"
-)
+# Same key as before #248, so old and new writers share one lock.
+_DEFAULT_ADVISORY_LOCK_KEY = 1
 
 _MIN_INT32 = -(2**31)
 _MAX_INT32 = 2**31 - 1
@@ -68,10 +66,10 @@ CREATE TABLE IF NOT EXISTS provena_meta (
 
 def _coerce_advisory_lock_key(
     key: AdvisoryLockKey | None,
-) -> int | tuple[int, int] | None:
+) -> int | tuple[int, int]:
     """Validate and normalize an advisory lock key.
 
-    ``None`` means the default trail-derived key. A single integer maps to
+    ``None`` means the default key ``1``. A single integer maps to
     PostgreSQL's one-argument ``pg_advisory_xact_lock(bigint)``; a pair maps
     to the two-argument ``pg_advisory_xact_lock(int, int)`` overload.
 
@@ -80,7 +78,7 @@ def _coerce_advisory_lock_key(
             does not fit the PostgreSQL advisory lock argument range.
     """
     if key is None:
-        return None
+        return _DEFAULT_ADVISORY_LOCK_KEY
     if isinstance(key, bool):
         raise ValueError("advisory_lock_key must be an int or a pair of ints")
     if isinstance(key, int):
@@ -111,14 +109,16 @@ class PostgreSQLBackend:
     Uses psycopg v3 with ``psycopg_pool.ConnectionPool`` for concurrent
     access. Chain hash ordering is enforced via ``pg_advisory_xact_lock``.
 
-    By default the lock key is derived from the database and trail identity
-    (``hashtext(current_database() || 'provena:trail')``), so separate
-    single-trail deployments do not serialize on a magic constant. Distinct
-    trails sharing one database can pass an explicit ``advisory_lock_key``
-    (an int or a ``(int, int)`` pair) to use independent lock scopes.
+    By default the lock key is ``1``, the key earlier versions use, so old
+    and new writers stay serialized during a rolling upgrade. The table
+    names are fixed, so one schema holds one chain. For a second chain in
+    the same database (for example under another ``search_path``), give
+    that chain its own ``advisory_lock_key`` (an int or an ``(int, int)``
+    pair). Every writer of one chain must use the same key, or appends
+    can fork the chain.
     """
 
-    _advisory_lock_key: int | tuple[int, int] | None = None
+    _advisory_lock_key: int | tuple[int, int] = _DEFAULT_ADVISORY_LOCK_KEY
 
     def __init__(
         self,
@@ -150,8 +150,6 @@ class PostgreSQLBackend:
     def _advisory_lock_sql(self) -> tuple[str, tuple[Any, ...]]:
         """Return the advisory lock statement and its parameters."""
         key = self._advisory_lock_key
-        if key is None:
-            return _DEFAULT_ADVISORY_LOCK_SQL, ()
         if isinstance(key, tuple):
             return "SELECT pg_advisory_xact_lock(%s, %s)", key
         return "SELECT pg_advisory_xact_lock(%s)", (key,)

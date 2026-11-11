@@ -11,6 +11,7 @@ is not set. To run these tests locally:
 from __future__ import annotations
 
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -203,19 +204,37 @@ class TestPostgreSQLBackendSchema:
 
 
 class TestPostgreSQLAdvisoryLocks:
-    def test_default_lock_key_is_derived_from_trail_identity(self, pg_backend):
+    def test_default_lock_key_is_one(self, pg_backend):
         with pg_backend._pool.connection() as lock_conn:
             pid = lock_conn.execute("SELECT pg_backend_pid()").fetchone()[0]
             sql, params = pg_backend._advisory_lock_sql()
-            assert "hashtext" in sql
-            assert params == ()
+            assert sql == "SELECT pg_advisory_xact_lock(%s)"
+            assert params == (1,)
 
             lock_conn.execute(sql, params)
-            expected = lock_conn.execute(
-                "SELECT hashtext(current_database() || 'provena:trail')::bigint"
-            ).fetchone()[0]
+            assert _advisory_lock_keys(pg_backend, pid) == [1]
 
-            assert _advisory_lock_keys(pg_backend, pid) == [expected]
+    def test_default_lock_key_serializes_with_pre_248_writers(self, pg_backend):
+        import psycopg
+
+        with psycopg.connect(_pg_conninfo) as lock_conn:
+            lock_conn.execute("SELECT pg_advisory_xact_lock(1)")
+
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(
+                pg_backend.append, _make_record(content_hash="serialized")
+            )
+            try:
+                time.sleep(0.5)
+                assert not future.done()
+
+                lock_conn.rollback()
+                record_id = future.result(timeout=5)
+            finally:
+                executor.shutdown(wait=True, cancel_futures=True)
+
+            assert record_id >= 1
+            assert pg_backend.count() == 1
 
     def test_explicit_int_lock_key_is_used(self, pg_backend):
         from provena.storage_pg import PostgreSQLBackend

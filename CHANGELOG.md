@@ -6,9 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
-### Changed
+### Added
 
-- **PostgreSQL advisory lock key is derived from the trail identity, not the literal `1`.** The default is `hashtext(current_database() || 'provena:trail')`. `PostgreSQLBackend` and `ContextTrail` accept an optional `advisory_lock_key` (an int or an int pair) so separate trails in one database do not serialize on each other (#248)
+- **`PostgreSQLBackend` and `ContextTrail` accept an optional `advisory_lock_key`.** The key is an int or an int pair, passed as a kwarg or through TOML/YAML/dict config. The default stays `1`, so rolling upgrades keep one lock. Use a distinct key only for a second chain in the same database, for example under another `search_path` (#248)
 
 ### Fixed
 

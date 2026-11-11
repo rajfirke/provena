@@ -6,7 +6,7 @@ storage:
   backend: sqlite         # sqlite, memory, or postgresql
   path: provena.db        # File path (SQLite) or connection URL (PostgreSQL)
   # pool_size: 5          # Connection pool size (PostgreSQL only)
-  # advisory_lock_key: [42, 7]  # Optional lock scope: int or [high, low] pair (PostgreSQL only)
+  # advisory_lock_key: [42, 7]  # PostgreSQL only, default 1; for a second chain in one database
 
 provenance:
   required_fields:
