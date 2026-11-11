@@ -515,3 +515,35 @@ def test_check_freshness_and_provenance_use_newest_records():
         assert prov_result["missing"] >= 1
     finally:
         trail.close()
+
+@pytest.mark.skipif(not _has_fastmcp, reason="fastmcp not installed")
+def test_list_violations_uses_newest_records():
+    """list_violations must also inspect the most recent records (issue #241)."""
+    trail = ContextTrail(backend="memory")
+    now = datetime.now(timezone.utc)
+    for i in range(15):
+        trail.log(
+            f"old-{i}",
+            source="retriever",
+            source_name=f"old-{i}",
+            provenance=ProvenanceMetadata(
+                source_url="https://example.com",
+                created_at=now - timedelta(hours=1),
+            ),
+        )
+    trail.log(
+        "stale-newest",
+        source="tool",
+        source_name="stale-newest",
+        provenance=ProvenanceMetadata(
+            source_url="https://example.com",
+            created_at=now - timedelta(days=200),
+        ),
+    )
+    configure(trail)
+    try:
+        result = _call_tool(create_server(), "list_violations", {"limit": 5})
+        assert result["total_violations"] >= 1
+        assert any(v.get("source_name") == "stale-newest" for v in result.get("violations", []))
+    finally:
+        trail.close()

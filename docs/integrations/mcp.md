@@ -97,7 +97,7 @@ evaluated when a record is logged, not when the MCP tool runs, so an old
 
 `source` is an exact source-type filter, such as `retriever` or `tool`. The
 tools return JSON text. For `check_freshness` and `check_provenance`, `limit`
-selects the first matching records by ID, not the newest records.
+selects the newest matching records (ordered by ID descending), not the oldest.
 `list_violations` also applies its limit while querying each violation type,
 then returns at most `limit` deduplicated entries. Its `total_violations` counts
 deduplicated matches from those limited queries before the final list is cut
