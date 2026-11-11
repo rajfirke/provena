@@ -207,7 +207,15 @@ class PostgreSQLBackend:
         limit: int = 100,
         offset: int = 0,
         run_id: str | None = None,
+        order: str = "asc",
     ) -> list[dict[str, Any]]:
+        """Query records with optional filters.
+
+        Args:
+            order: ``"asc"`` (oldest first) or ``"desc"`` (newest first).
+        """
+        if order not in ("asc", "desc"):
+            raise ValueError(f"order must be 'asc' or 'desc', got {order!r}")
         self._check_open()
         clauses: list[str] = []
         params: list[Any] = []
@@ -232,7 +240,8 @@ class PostgreSQLBackend:
             params.append(run_id)
 
         where = " AND ".join(clauses) if clauses else "TRUE"
-        sql = f"SELECT * FROM trail WHERE {where} ORDER BY id ASC LIMIT %s OFFSET %s"
+        direction = "ASC" if order == "asc" else "DESC"
+        sql = f"SELECT * FROM trail WHERE {where} ORDER BY id {direction} LIMIT %s OFFSET %s"
         params.extend([limit, offset])
 
         with self._pool.connection() as conn, conn.cursor() as cur:

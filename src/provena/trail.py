@@ -717,18 +717,24 @@ class ContextTrail:
         limit: int = 100,
         offset: int = 0,
         run_id: str | None = None,
+        order: str = "asc",
     ) -> list[dict[str, Any]]:
-        """Return trail rows matching the filters, oldest first.
+        """Return trail rows matching the filters.
 
         When buffering is enabled, unflushed records are included. Those rows
         have not been assigned a backend id yet and are returned with
         ``id=-1``. Filters match ``InMemoryBackend.query`` (string timestamp
         comparison, ``metadata_json.run_id``).
+
+        Args:
+            order: ``"asc"`` (oldest first, default) or ``"desc"`` (newest first).
         """
         if limit < 1:
             raise ValueError(f"limit must be >= 1, got {limit}")
         if offset < 0:
             raise ValueError(f"offset must be >= 0, got {offset}")
+        if order not in ("asc", "desc"):
+            raise ValueError(f"order must be 'asc' or 'desc', got {order!r}")
 
         source_str = source.value if isinstance(source, ContextSource) else source
         if self._buffer is None:
@@ -741,6 +747,7 @@ class ContextTrail:
                 limit=limit,
                 offset=offset,
                 run_id=run_id,
+                order=order,
             )
 
         # Buffered mode: pending rows are invisible to the backend until flush.
@@ -759,6 +766,8 @@ class ContextTrail:
                 run_id=run_id,
             )
         ]
+        if order == "desc":
+            matched = list(reversed(matched))
         return matched[offset : offset + limit]
 
     def annotate(
