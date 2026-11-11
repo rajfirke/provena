@@ -81,11 +81,7 @@ class PostgreSQLBackend:
             min_size=min_pool_size,
             max_size=pool_size,
             open=True,
-            # The chain hash covers the timestamp string, and psycopg renders
-            # timestamptz in the session TimeZone. Pin every pooled connection
-            # to UTC so a read produces the same string that was hashed,
-            # whatever the server or database default happens to be.
-            kwargs={"options": "-c timezone=UTC"},
+            configure=_set_utc,
         )
         self._hasher = hasher
         self._init_schema()
@@ -277,6 +273,25 @@ class PostgreSQLBackend:
         if self._pool is not None:
             self._pool.close()
             self._pool = None
+
+
+def _set_utc(conn: Any) -> None:
+    """Pin a pooled connection's session TimeZone to UTC.
+
+    The chain hash covers the timestamp string, and psycopg renders
+    timestamptz in the session TimeZone, so a read has to produce the same
+    string that was hashed whatever the server or database default is.
+
+    This runs as a pool ``configure`` callback rather than an ``options``
+    connection parameter, because ``options`` would replace any value the
+    caller already set in their DSN. A DSN carrying
+    ``options=-c statement_timeout=5000`` keeps it this way.
+
+    The commit is required: psycopg-pool discards any connection left inside
+    a transaction once ``configure`` returns.
+    """
+    conn.execute("SET TIME ZONE 'UTC'")
+    conn.commit()
 
 
 def _row_to_dict(cursor: Any, row: tuple[Any, ...]) -> dict[str, Any]:

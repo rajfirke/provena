@@ -225,3 +225,24 @@ class TestPostgreSQLTimeZone:
             with psycopg.connect(_pg_conninfo) as conn:
                 conn.execute(f'ALTER DATABASE "{dbname}" RESET TimeZone')
                 conn.commit()
+
+    def test_dsn_options_survive_the_pool_configuration(self, pg_backend):
+        # An earlier revision pinned UTC with kwargs={"options": "-c timezone=UTC"},
+        # which replaces any options the caller set in their DSN: a connection
+        # string carrying statement_timeout lost it silently. UTC is applied with
+        # a configure callback instead, so both settings have to survive.
+        from provena.storage_pg import PostgreSQLBackend
+
+        separator = "&" if "?" in _pg_conninfo else "?"
+        conninfo = f"{_pg_conninfo}{separator}options=-c%20statement_timeout%3D5000"
+
+        backend = PostgreSQLBackend(conninfo=conninfo, pool_size=2)
+        try:
+            with backend._pool.connection() as conn:
+                timeout = conn.execute("SHOW statement_timeout").fetchone()[0]
+                tz = conn.execute("SHOW timezone").fetchone()[0]
+
+            assert timeout == "5s"
+            assert tz == "UTC"
+        finally:
+            backend.close()
