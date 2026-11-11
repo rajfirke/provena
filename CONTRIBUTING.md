@@ -10,7 +10,7 @@ git clone https://github.com/rajfirke/provena.git
 cd provena
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev,cli,otel,yaml]"
+pip install -e ".[dev,cli,otel,yaml,mcp,pdf]"
 pip install opentelemetry-sdk  # for OTel tests
 
 # Verify everything works
@@ -38,7 +38,7 @@ src/provena/
 ├── storage.py               # SQLite + InMemory backends
 ├── storage_pg.py            # PostgreSQL backend
 ├── trail.py                 # ContextTrail engine + @track decorator
-├── buffer.py                # Async batch write buffer
+├── buffer.py                # Background-thread batch write buffer
 ├── policy.py                # Policy engine (LOG / WARN / BLOCK)
 ├── aggregator.py            # TrailAggregator for multi-agent trails
 ├── retention.py             # Retention engine

@@ -167,8 +167,29 @@ class TestContextEntry:
             max_content_bytes=100,
         )
         assert entry.truncated
-        expected_hash = hashlib.sha256(b"x" * 100).hexdigest()
+        expected_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
         assert entry.content_hash == expected_hash
+
+    def test_truncated_content_hash_covers_different_tails(self):
+        prefix = b"x" * (64 * 1024)
+        tail_length = 100 * 1024 - len(prefix)
+        first_content = prefix + b"a" * tail_length
+        second_content = prefix + b"b" * tail_length
+
+        first_entry = ContextEntry.create(
+            content=first_content,
+            source=ContextSource.RETRIEVER,
+        )
+        second_entry = ContextEntry.create(
+            content=second_content,
+            source=ContextSource.RETRIEVER,
+        )
+
+        assert first_entry.truncated
+        assert second_entry.truncated
+        assert first_entry.content_hash == hashlib.sha256(first_content).hexdigest()
+        assert second_entry.content_hash == hashlib.sha256(second_content).hexdigest()
+        assert first_entry.content_hash != second_entry.content_hash
 
     def test_no_truncation_under_limit(self):
         content = "short"
@@ -208,6 +229,7 @@ class TestContextEntry:
         )
         d = entry.to_dict()
         assert d["content_hash"] == entry.content_hash
+        assert d["content_hash_version"] == 2
         assert d["source"] == "retriever"
         assert d["source_name"] == "test"
         assert "timestamp" in d
@@ -365,7 +387,7 @@ class TestPrepareContent:
         assert content_bytes == b"\x00\x01"
         assert ctype == "bytes"
 
-    def test_truncation(self):
+    def test_oversize_content_remains_available_for_hashing(self):
         content_bytes, _ctype, trunc = _prepare_content("x" * 200, 100)
-        assert len(content_bytes) == 100
+        assert content_bytes == b"x" * 200
         assert trunc
