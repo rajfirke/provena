@@ -378,9 +378,14 @@ class TestContextTrailBuffered:
         # After close, records should have been flushed
         # Can't query after close, but buffer should be empty
 
-    def test_close_keeps_backend_open_until_pending_records_flush(self, caplog):
+    def test_close_reports_pending_records_and_closes_backend(self, caplog):
+        errors = []
         trail = ContextTrail(
-            backend="memory", buffered=True, buffer_size=100, flush_interval=60
+            backend="memory",
+            buffered=True,
+            buffer_size=100,
+            flush_interval=60,
+            on_error=errors.append,
         )
         real_append = trail._backend.append
         real_close = trail._backend.close
@@ -408,31 +413,59 @@ class TestContextTrailBuffered:
 
         assert trail._buffer is not None
         assert trail._buffer.pending == 1
-        assert close_calls == 0
+        assert close_calls == 1
         assert trail._backend.count() == 0
         assert "1 remaining" in caplog.text
+        assert len(errors) == 1
+        assert (
+            str(errors[0])
+            == "1 buffered record(s) could not be persisted during shutdown"
+        )
+        assert trail.health()["errors"] == 1
 
-        assert trail.close() == 0
-        assert trail._buffer.pending == 0
-        assert close_calls == 1
-        assert trail._backend.count() == 1
+        with trail._buffer._lock:
+            trail._buffer._buffer.clear()
+        assert trail._buffer.close() == 0
 
-    def test_close_closes_backend_even_if_buffer_close_raises(self, tmp_path):
+    def test_close_reports_buffer_close_error_and_closes_backend(self, tmp_path):
+        errors = []
         db_path = str(tmp_path / "trail.db")
         trail = ContextTrail(
-            storage_path=db_path, buffered=True, buffer_size=100, flush_interval=60
+            storage_path=db_path,
+            buffered=True,
+            buffer_size=100,
+            flush_interval=60,
+            on_error=errors.append,
+            strict_mode=True,
         )
         trail.log("data", source="retriever")
-        real_close = trail._buffer.close
+        assert trail._buffer.pending == 1
+        real_buffer_close = trail._buffer.close
 
-        def boom() -> None:
-            real_close()
+        def fail_append(record):
+            raise OSError("simulated disk full")
+
+        trail._backend.append = fail_append  # type: ignore[method-assign]
+
+        def boom() -> int:
+            trail._buffer._stop.set()
+            trail._buffer._thread.join(timeout=5)
             raise OSError("simulated disk full")
 
         trail._buffer.close = boom  # type: ignore[method-assign]
         with pytest.raises(OSError, match="simulated disk full"):
             trail.close()
+        assert len(errors) == 1
+        assert isinstance(errors[0], OSError)
+        assert str(errors[0]) == "simulated disk full"
         assert trail._backend._conn is None
+        assert trail.health()["errors"] == 1
+
+        # Clear intentionally unsaved test data and unregister the stopped buffer.
+        with trail._buffer._lock:
+            trail._buffer._buffer.clear()
+        trail._buffer.close = real_buffer_close  # type: ignore[method-assign]
+        assert trail._buffer.close() == 0
 
     def test_summary_consistent_with_concurrent_flush(self):
         trail = ContextTrail(
