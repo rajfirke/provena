@@ -6,9 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs state that a SQLite trail allows only one writer.** README and the verification guide now say concurrent appends to one SQLite file can fork the hash chain, and point multi-worker deployments at PostgreSQL (#202)
+- **Oversize context hashes now cover the full original input.** `max_content_bytes` now sets the `truncated` flag without discarding bytes before hashing. Existing records are unchanged and retain their historical prefix hashes; newly created entries for the same oversize content will have a different `content_hash`.
+
 ### Fixed
 
-- **Oversize context hashes now cover the full original input.** `max_content_bytes` now sets the `truncated` flag without discarding bytes before hashing. Existing records are unchanged and retain their historical prefix hashes; newly created entries for the same oversize content will have a different `content_hash`.
+- PostgreSQL annotations reject missing record IDs with the same `ValueError` as the SQLite and in-memory backends, without inserting an annotation (#229).
 - **`verify_chain()` takes a consistent snapshot under the trail lock.** Flush (when buffering) and `all_records()` now share `log()`'s lock, so a concurrent append cannot land between them. The hash walk still runs after the lock is released. `total_records` matches the snapshot captured for that call (#198)
 
 ## [1.3.1] - 2026-10-04
