@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   queries and CLI audit filters. In `provena audit`, `--to` includes the full
   UTC day (#240).
 - **`verify_chain()` takes a consistent snapshot under the trail lock.** Flush (when buffering) and `all_records()` now share `log()`'s lock, so a concurrent append cannot land between them. The hash walk still runs after the lock is released. `total_records` matches the snapshot captured for that call (#198)
+- **The tamper-detection example no longer uses the deprecated `tempfile.mktemp()`.** CodeQL flags `mktemp()` as an insecure temporary file (the path it returns can be raced to a symlink before first use). The example now creates its throwaway database inside a private `tempfile.mkdtemp()` directory and removes the directory on cleanup
 
 ## [1.3.1] - 2026-10-04
 
