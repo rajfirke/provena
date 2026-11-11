@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **`PostgreSQLBackend` and `ContextTrail` accept an optional `advisory_lock_key`.** The key is an int or an int pair, passed as a kwarg or through TOML/YAML/dict config. The default stays `1`, so rolling upgrades keep one lock. Use a distinct key only for a second chain in the same database, for example under another `search_path` (#248)
+
 ### Changed
 
 - **Docs state that a SQLite trail allows only one writer.** README and the verification guide now say concurrent appends to one SQLite file can fork the hash chain, and point multi-worker deployments at PostgreSQL (#202)
