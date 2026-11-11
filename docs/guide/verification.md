@@ -40,6 +40,13 @@ GENESIS_HASH = hashlib.sha256(b"provena:genesis").hexdigest()
 
 This anchors the chain to a known starting point.
 
+Chain integrity on SQLite assumes one writer: one `ContextTrail` (one
+process) per database file. Concurrent writers on one `.db` file can fork
+the chain at write time. `verify_chain()` does not prevent the fork: it
+walks records in linear ID order and reports a break after the conflicting
+appends are already stored. Keep one `ContextTrail` per SQLite file, or use
+PostgreSQL when several workers append to the same trail.
+
 ## Verifying Chain Integrity
 
 Call `trail.verify_chain()` to recompute every chain hash from the genesis
