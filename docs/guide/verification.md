@@ -3,17 +3,18 @@
 Provena maintains a SHA-256 hash chain across all audit records, creating a
 tamper-evident log. If a record's hashed fields are modified, or a record is
 deleted or reordered, the chain breaks and verification fails. This gives you
-cryptographic proof that a record's content, source, timestamp, and position
-in the chain have not been altered.
+tamper evidence for the recorded content digest, source, timestamp, and chain
+position. Because Provena does not store raw context, chain verification cannot
+independently recompute a content digest without the original input.
 
 Chain verification does **not** cover every column on a record. The hash
 payload is only `previous_hash`, `content_hash`, `source`, and `timestamp`
 (see below). Governance columns outside that payload -- `provenance_status`,
 `freshness_status`, `source_name`, `metadata_json`, `config_hash`,
-`content_type`, and `truncated` -- can be modified without breaking the
-chain. Chain verification proves a record's identity and ordering; it does
-not, on its own, prove every governance annotation attached to it is
-unchanged.
+`content_type`, `truncated`, and `content_hash_version` -- can be modified
+without breaking the chain. Chain verification proves a record's identity
+and ordering; it does not, on its own, prove every governance annotation
+attached to it is unchanged.
 
 ## How the Hash Chain Works
 
@@ -23,6 +24,18 @@ Each record's chain hash is computed from four inputs:
 2. The **content hash** (SHA-256 of the raw context bytes)
 3. The **source type** string
 4. The **timestamp** in ISO format
+
+New entries hash the full original content bytes, even when the input exceeds
+`max_content_bytes`; `truncated` records whether the threshold was exceeded.
+Provena stores the digest rather than the raw input, so `verify_chain()` checks
+the recorded digest's place in the chain but cannot independently recompute it
+without the original content. Existing records keep their historical hashes.
+`content_hash_version` identifies the rule: version 1 hashes the historical
+truncated bytes, and version 2 hashes the full input. Version 2 is introduced
+by the first release containing this change; it is currently listed as
+Unreleased, and the latest published version is `v1.3.1`. Find legacy
+oversize entries where `content_hash_version = 1` and `truncated` is true
+(`truncated = 1` in SQLite; `truncated IS TRUE` in PostgreSQL).
 
 The computation follows a Merkle-style pattern:
 
@@ -39,6 +52,13 @@ GENESIS_HASH = hashlib.sha256(b"provena:genesis").hexdigest()
 ```
 
 This anchors the chain to a known starting point.
+
+Chain integrity on SQLite assumes one writer: one `ContextTrail` (one
+process) per database file. Concurrent writers on one `.db` file can fork
+the chain at write time. `verify_chain()` does not prevent the fork: it
+walks records in linear ID order and reports a break after the conflicting
+appends are already stored. Keep one `ContextTrail` per SQLite file, or use
+PostgreSQL when several workers append to the same trail.
 
 ## Verifying Chain Integrity
 
