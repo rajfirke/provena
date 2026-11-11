@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _CREATE_TRAIL = """\
 CREATE TABLE IF NOT EXISTS trail (
@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS trail (
     config_hash       TEXT NOT NULL DEFAULT '',
     metadata_json     JSONB NOT NULL DEFAULT '{}',
     content_type      TEXT NOT NULL DEFAULT 'str',
-    truncated         BOOLEAN NOT NULL DEFAULT FALSE
+    truncated         BOOLEAN NOT NULL DEFAULT FALSE,
+    content_hash_version SMALLINT NOT NULL DEFAULT 1
 );
 """
 
@@ -91,6 +92,10 @@ class PostgreSQLBackend:
             with conn.cursor() as cur:
                 cur.execute(_SCHEMA_VERSION_TABLE)
                 cur.execute(_CREATE_TRAIL)
+                cur.execute(
+                    "ALTER TABLE trail ADD COLUMN IF NOT EXISTS "
+                    "content_hash_version SMALLINT NOT NULL DEFAULT 1"
+                )
                 cur.execute(_CREATE_ANNOTATIONS)
                 for stmt in _CREATE_INDEXES.strip().split(";"):
                     stmt = stmt.strip()
@@ -137,8 +142,8 @@ class PostgreSQLBackend:
                     "provenance_json, provenance_status, missing_fields, "
                     "freshness_status, "
                     "chain_hash, previous_hash, config_hash, "
-                    "metadata_json, content_type, truncated) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "metadata_json, content_type, truncated, content_hash_version) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "RETURNING id",
                     (
                         record["content_hash"],
@@ -155,6 +160,7 @@ class PostgreSQLBackend:
                         record.get("metadata_json", "{}"),
                         record.get("content_type", "str"),
                         bool(record.get("truncated")),
+                        record.get("content_hash_version", 1),
                     ),
                 )
                 row = cur.fetchone()
