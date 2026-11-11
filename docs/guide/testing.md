@@ -84,6 +84,13 @@ def test_provenance_validation():
 This is especially important when using the SQLite backend in tests, where
 unclosed connections can cause file-locking issues.
 
+With buffered storage, `trail.close()` makes a final flush attempt and returns
+the number of records still pending. Pending records are logged, counted, and
+sent to `on_error`; with `strict_mode=True`, the error is raised. The backend
+closes regardless of the flush outcome, so records that could not be persisted
+are lost unless drained before closing. Use an explicit `close()` call to check
+the returned pending count; the context manager cannot return it.
+
 ## Testing with strict_mode
 
 Enable `strict_mode=True` to turn governance errors into exceptions. In

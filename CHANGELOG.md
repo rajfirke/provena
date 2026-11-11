@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **`ContextTrail.close()` reports pending buffered records through the governance error handler and always closes the backend.** `mcp serve` reports the pending count and exits with a non-zero status after an unsuccessful final flush.
 - **PostgreSQL no longer reports an untouched trail as broken outside UTC.** The chain hash covers the timestamp string, and psycopg renders `timestamptz` in the session `TimeZone`, so on a database whose zone was not UTC the readback offset differed from the `+00:00` form that was hashed and `verify_chain()` reported a break nobody caused. Pooled connections are now pinned to UTC, and `_row_to_dict()` converts an aware timestamp to UTC before `isoformat()`. CI passed previously because its Postgres service runs UTC (#230)
 - PostgreSQL annotations reject missing record IDs with the same `ValueError` as the SQLite and in-memory backends, without inserting an annotation (#229).
 - Normalize `ContextTrail.query()` date filters to UTC so offset-aware and naive

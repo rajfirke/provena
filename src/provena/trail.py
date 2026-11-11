@@ -956,11 +956,33 @@ class ContextTrail:
             return self._buffer.flush()
         return 0
 
-    def close(self) -> None:
-        """Close the storage backend and release resources."""
+    def close(self) -> int:
+        """Close the backend and return any buffered records still pending.
+
+        Pending records are reported through the normal governance error path.
+        The backend is closed even when flushing fails, so shutdown cannot
+        leak a storage connection.
+        """
+        if self._buffer is None:
+            self._backend.close()
+            return 0
+
+        pending = 0
         try:
-            if self._buffer is not None:
-                self._buffer.close()
+            try:
+                pending = self._buffer.close()
+            except Exception as exc:
+                pending = self._buffer.pending
+                self._handle_error(exc)
+            else:
+                if pending:
+                    self._handle_error(
+                        RuntimeError(
+                            f"{pending} buffered record(s) could not be persisted "
+                            "during shutdown"
+                        )
+                    )
+            return pending
         finally:
             self._backend.close()
 
