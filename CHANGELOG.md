@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - **Docs state that a SQLite trail allows only one writer.** README and the verification guide now say concurrent appends to one SQLite file can fork the hash chain, and point multi-worker deployments at PostgreSQL (#202)
 - **Oversize context hashes now cover the full original input.** New records store `content_hash_version=2`; legacy rows default to version 1 and retain their historical truncated-byte digest. Legacy oversize rows are identified by a true `truncated` flag and version 1. This is currently unreleased; the latest published version is v1.3.1. The version marker is not covered by the existing chain format.
+- **CONTRIBUTING.md matches the current tree and dev setup.** The project map includes modules added since v0.7, the editable install lists the `yaml` extra, and PostgreSQL tests document `PROVENA_TEST_PG_URL` (#58)
 
 ### Fixed
 
