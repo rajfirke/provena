@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, time, timezone
 from typing import Any
 
 import click
@@ -110,14 +110,14 @@ def _open_trail(ctx: click.Context) -> tuple[ContextTrail, str]:
     "start",
     type=click.DateTime(formats=["%Y-%m-%d"]),
     default=None,
-    help="Filter records from this date (YYYY-MM-DD).",
+    help="Filter records from the start of this UTC date (YYYY-MM-DD).",
 )
 @click.option(
     "--to",
     "end",
     type=click.DateTime(formats=["%Y-%m-%d"]),
     default=None,
-    help="Filter records up to this date (YYYY-MM-DD).",
+    help="Filter records through the end of this UTC date (YYYY-MM-DD).",
 )
 @click.option(
     "--format",
@@ -144,6 +144,9 @@ def audit(
     run_id: str | None,
 ) -> None:
     """Query the context governance audit log."""
+    if end is not None:
+        end = datetime.combine(end.date(), time.max, tzinfo=timezone.utc)
+
     trail, _ = _open_trail(ctx)
     try:
         records = trail.query(

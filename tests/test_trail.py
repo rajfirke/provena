@@ -20,9 +20,16 @@ from provena.trail import ContextTrail
 
 
 class TestContextTrailLog:
+    def test_new_sqlite_record_stores_content_hash_version(self, trail):
+        record = trail.log("new content", source="retriever")
+        assert record is not None
+        assert trail.last_record["content_hash_version"] == 2
+
     def test_log_basic(self, memory_trail):
         record = memory_trail.log("hello world", source="retriever")
         assert record is not None
+        assert record.entry.content_hash_version == 2
+        assert memory_trail.last_record["content_hash_version"] == 2
         assert record.entry.content_hash
         assert record.entry.source == ContextSource.RETRIEVER
         assert record.chain_hash

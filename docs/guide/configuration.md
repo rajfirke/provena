@@ -79,8 +79,9 @@ trail = ContextTrail(backend="memory", temporal_detection=False)
 
 ### max_content_bytes
 
-Maximum content size in bytes before truncation. Content exceeding this limit
-is truncated and the record's `truncated` flag is set to `True`.
+Byte threshold for setting a record's `truncated` flag. Content above this
+threshold is still hashed in full; Provena stores the digest, not the raw
+content, and this setting does not cap the bytes hashed.
 
 - **Type**: `int`
 - **Default**: `65536` (64 KB)

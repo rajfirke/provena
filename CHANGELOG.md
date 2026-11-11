@@ -9,11 +9,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Changed
 
 - **Docs state that a SQLite trail allows only one writer.** README and the verification guide now say concurrent appends to one SQLite file can fork the hash chain, and point multi-worker deployments at PostgreSQL (#202)
+- **Oversize context hashes now cover the full original input.** New records store `content_hash_version=2`; legacy rows default to version 1 and retain their historical truncated-byte digest. Legacy oversize rows are identified by a true `truncated` flag and version 1. This is currently unreleased; the latest published version is v1.3.1. The version marker is not covered by the existing chain format.
 
 ### Fixed
 
 - **`ContextTrail.close()` reports pending buffered records through the governance error handler and always closes the backend.** `mcp serve` reports the pending count and exits with a non-zero status after an unsuccessful final flush.
+- **PostgreSQL no longer reports an untouched trail as broken outside UTC.** The chain hash covers the timestamp string, and psycopg renders `timestamptz` in the session `TimeZone`, so on a database whose zone was not UTC the readback offset differed from the `+00:00` form that was hashed and `verify_chain()` reported a break nobody caused. Pooled connections are now pinned to UTC, and `_row_to_dict()` converts an aware timestamp to UTC before `isoformat()`. CI passed previously because its Postgres service runs UTC (#230)
 - PostgreSQL annotations reject missing record IDs with the same `ValueError` as the SQLite and in-memory backends, without inserting an annotation (#229).
+- Normalize `ContextTrail.query()` date filters to UTC so offset-aware and naive
+  bounds select the correct records, including inclusive boundaries, buffered
+  queries and CLI audit filters. In `provena audit`, `--to` includes the full
+  UTC day (#240).
 - **`verify_chain()` takes a consistent snapshot under the trail lock.** Flush (when buffering) and `all_records()` now share `log()`'s lock, so a concurrent append cannot land between them. The hash walk still runs after the lock is released. `total_records` matches the snapshot captured for that call (#198)
 
 ## [1.3.1] - 2026-10-04

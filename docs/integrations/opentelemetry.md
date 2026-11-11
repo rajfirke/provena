@@ -65,7 +65,7 @@ Every span includes these attributes:
 | `provena.chain_hash` | `string` | This record's hash chain position |
 | `provena.timestamp` | `string` | ISO 8601 timestamp of when the entry was recorded |
 | `provena.content_type` | `string` | Content type (`str`, `bytes`, or `json`) |
-| `provena.truncated` | `bool` | Whether the content was truncated to fit size limits |
+| `provena.truncated` | `bool` | Whether input exceeded `max_content_bytes`; the full input is hashed |
 
 These attributes are added conditionally when validation results are available:
 
