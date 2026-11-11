@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - **PostgreSQL no longer reports an untouched trail as broken outside UTC.** The chain hash covers the timestamp string, and psycopg renders `timestamptz` in the session `TimeZone`, so on a database whose zone was not UTC the readback offset differed from the `+00:00` form that was hashed and `verify_chain()` reported a break nobody caused. Pooled connections are now pinned to UTC, and `_row_to_dict()` converts an aware timestamp to UTC before `isoformat()`. CI passed previously because its Postgres service runs UTC (#230)
 - PostgreSQL annotations reject missing record IDs with the same `ValueError` as the SQLite and in-memory backends, without inserting an annotation (#229).
+- Normalize `ContextTrail.query()` date filters to UTC so offset-aware and naive
+  bounds select the correct records, including inclusive boundaries, buffered
+  queries and CLI audit filters. In `provena audit`, `--to` includes the full
+  UTC day (#240).
 - **`verify_chain()` takes a consistent snapshot under the trail lock.** Flush (when buffering) and `all_records()` now share `log()`'s lock, so a concurrent append cannot land between them. The hash walk still runs after the lock is released. `total_records` matches the snapshot captured for that call (#198)
 
 ## [1.3.1] - 2026-10-04
