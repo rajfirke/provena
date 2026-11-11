@@ -7,7 +7,7 @@ What the following tests aim to cover:
     4. Export formats with metadata
     5. Annotations & reviewer comments
     6. Metadata preservation
-    7. Content truncation edge cases
+    7. Oversize-content threshold edge cases
     8. Policy enforcement (BLOCK/WARN)
     9. Multi-source query filters
     10. Summary filters by source type
@@ -396,10 +396,10 @@ class TestMcpMemoryMetadataPreservation:
 
 
 class TestMcpMemoryContentTruncation:
-    """Content truncation edge cases"""
+    """Oversize-content threshold edge cases."""
 
     def test_mcp_content_truncation(self, memory_trail):
-        """Test large MCP content is properly truncated"""
+        """Test large MCP content is marked as over the configured threshold."""
         # Create a trail with small max_content_bytes
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             small_trail = ContextTrail(
@@ -417,7 +417,7 @@ class TestMcpMemoryContentTruncation:
             small_trail.close()
 
     def test_memory_content_truncation(self, memory_trail):
-        """Test large MEMORY content is properly truncated"""
+        """Test large MEMORY content is marked as over the configured threshold."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             small_trail = ContextTrail(
                 storage_path=f.name,
@@ -433,7 +433,7 @@ class TestMcpMemoryContentTruncation:
             small_trail.close()
 
     def test_truncated_content_query(self, memory_trail):
-        """Test truncated flag is preserved in queries"""
+        """Test the over-threshold flag is preserved in queries."""
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             small_trail = ContextTrail(
                 storage_path=f.name,

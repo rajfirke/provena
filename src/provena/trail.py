@@ -97,7 +97,8 @@ class ContextTrail:
             required_fields: Provenance fields to require for VALID status.
             max_age_days: Content older than this is marked STALE.
             temporal_detection: Enable regex-based date detection in content text.
-            max_content_bytes: Truncate content beyond this size.
+            max_content_bytes: Mark larger inputs as truncated; the full input is
+                still hashed.
             signing_key: HMAC key for signed hash chains. Also read from
                 ``PROVENA_SIGNING_KEY`` env var.
             otel_enabled: Emit OpenTelemetry spans for each logged entry.
@@ -405,6 +406,7 @@ class ContextTrail:
                 "metadata_json": json.dumps(entry.metadata),
                 "content_type": entry.content_type,
                 "truncated": entry.truncated,
+                "content_hash_version": entry.content_hash_version,
             }
 
             if self._buffer is not None:
@@ -726,6 +728,9 @@ class ContextTrail:
     ) -> list[dict[str, Any]]:
         """Return trail rows matching the filters, oldest first.
 
+        Naive timestamp bounds are interpreted as UTC, and aware bounds
+        are converted to UTC. Both bounds are inclusive.
+
         When buffering is enabled, unflushed records are included. Those rows
         have not been assigned a backend id yet and are returned with
         ``id=-1``. Filters match ``InMemoryBackend.query`` (string timestamp
@@ -736,6 +741,8 @@ class ContextTrail:
         if offset < 0:
             raise ValueError(f"offset must be >= 0, got {offset}")
 
+        start = _utc_query_bound(start)
+        end = _utc_query_bound(end)
         source_str = source.value if isinstance(source, ContextSource) else source
         if self._buffer is None:
             return self._backend.query(
@@ -784,10 +791,10 @@ class ContextTrail:
             The ID of the created annotation.
 
         Raises:
-            ValueError: If ``record_id`` is less than 1. In buffered mode
-                ``log()`` returns ``TrailRecord(id=-1)`` until the record
-                reaches the backend, and annotating that placeholder is
-                rejected by every backend with a different low-level error.
+            ValueError: If ``record_id`` is less than 1 or does not exist.
+                In buffered mode, flush pending records before annotating
+                them; ``log()`` returns ``TrailRecord(id=-1)`` until the
+                record reaches the backend.
         """
         if record_id < 1:
             raise ValueError(
@@ -1010,6 +1017,15 @@ def _resolve_signing_key(key: str | bytes | None) -> bytes | None:
     if isinstance(key, str):
         return key.encode("utf-8")
     return key
+
+
+def _utc_query_bound(bound: datetime | None) -> datetime | None:
+    """Normalize a query bound to UTC, treating a naive value as UTC."""
+    if bound is None:
+        return None
+    if bound.utcoffset() is None:
+        return bound.replace(tzinfo=timezone.utc)
+    return bound.astimezone(timezone.utc)
 
 
 def _query_row(record: dict[str, Any]) -> dict[str, Any]:

@@ -8,7 +8,7 @@ import threading
 from datetime import datetime
 from typing import Any, Protocol
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _CREATE_TABLE = """\
 CREATE TABLE IF NOT EXISTS trail (
@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS trail (
     config_hash       TEXT NOT NULL DEFAULT '',
     metadata_json     TEXT NOT NULL DEFAULT '{}',
     content_type      TEXT NOT NULL DEFAULT 'str',
-    truncated         INTEGER NOT NULL DEFAULT 0
+    truncated         INTEGER NOT NULL DEFAULT 0,
+    content_hash_version INTEGER NOT NULL DEFAULT 1
 );
 """
 
@@ -142,8 +143,13 @@ class SQLiteBackend:
                 "ALTER TABLE trail ADD COLUMN freshness_status "
                 "TEXT NOT NULL DEFAULT 'UNKNOWN'"
             )
-            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            conn.commit()
+        if from_version < 3:
+            conn.execute(
+                "ALTER TABLE trail ADD COLUMN content_hash_version "
+                "INTEGER NOT NULL DEFAULT 1"
+            )
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        conn.commit()
 
     def append(self, record: dict[str, Any]) -> int:
         """Append a record and return its assigned ID."""
@@ -155,8 +161,8 @@ class SQLiteBackend:
                 "provenance_json, provenance_status, missing_fields, "
                 "freshness_status, "
                 "chain_hash, previous_hash, config_hash, "
-                "metadata_json, content_type, truncated) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "metadata_json, content_type, truncated, content_hash_version) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     record["content_hash"],
                     record["source"],
@@ -172,6 +178,7 @@ class SQLiteBackend:
                     record.get("metadata_json", "{}"),
                     record.get("content_type", "str"),
                     1 if record.get("truncated") else 0,
+                    record.get("content_hash_version", 1),
                 ),
             )
             conn.commit()
@@ -309,6 +316,7 @@ class InMemoryBackend:
             record_id = len(self._records) + 1
             stored = {**record, "id": record_id}
             stored["truncated"] = 1 if record.get("truncated") else 0
+            stored.setdefault("content_hash_version", 1)
             self._records.append(stored)
             return record_id
 

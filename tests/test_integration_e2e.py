@@ -11,6 +11,7 @@ Scenario:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -625,12 +626,16 @@ class TestEdgeCases:
     """Edge cases that matter in production agent deployments."""
 
     def test_large_content_truncation(self):
-        """Content exceeding max_content_bytes is truncated but still governed."""
+        """Oversize content is flagged, fully hashed, and still governed."""
         with ContextTrail(backend="memory", max_content_bytes=256) as trail:
             large_content = "x" * 1000
             record = trail.log(large_content, source=ContextSource.RETRIEVER)
             assert record is not None
             assert record.entry.truncated is True
+            assert (
+                record.entry.content_hash
+                == hashlib.sha256(large_content.encode("utf-8")).hexdigest()
+            )
             assert trail.verify_chain().intact is True
 
     def test_binary_content_governance(self):
