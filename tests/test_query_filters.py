@@ -117,18 +117,30 @@ def test_query_interprets_naive_bounds_as_utc(
 
 
 @pytest.mark.parametrize(
-    ("option", "expected"),
-    [("--from", ["boundary", "after"]), ("--to", ["before", "boundary"])],
+    ("options", "expected"),
+    [
+        (["--from", "2026-11-03"], ["boundary", "after", "end_of_day", "next_day"]),
+        (["--to", "2026-11-03"], ["before", "boundary", "after", "end_of_day"]),
+        (
+            ["--from", "2026-11-03", "--to", "2026-11-03"],
+            ["boundary", "after", "end_of_day"],
+        ),
+    ],
 )
 def test_audit_date_filter_includes_its_utc_boundary(
-    tmp_path: Path, option: str, expected: list[str]
+    tmp_path: Path, options: list[str], expected: list[str]
 ) -> None:
     database = str(tmp_path / "audit.db")
     with ContextTrail(storage_path=database) as trail:
         _populate(trail)
+        next_day = BOUNDARY + timedelta(days=1)
+        with patch("provena.models.datetime") as clock:
+            clock.now.side_effect = [next_day - timedelta(microseconds=1), next_day]
+            for name in ("end_of_day", "next_day"):
+                assert trail.log(name, source="retriever", source_name=name) is not None
 
     result = CliRunner().invoke(
-        cli, ["--db", database, "audit", option, "2026-11-03", "--format", "json"]
+        cli, ["--db", database, "audit", *options, "--format", "json"]
     )
 
     assert result.exit_code == 0, result.output
