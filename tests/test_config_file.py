@@ -95,6 +95,17 @@ class TestYAMLConfig:
         assert trail.summary()["total"] == 1
         trail.close()
 
+    def test_yaml_strict_source_rejects_unknown_source(self, tmp_path):
+        config_file = tmp_path / "provena.yaml"
+        config_file.write_text("strict_source: true\nstorage:\n  backend: memory\n")
+        trail = ContextTrail(config=config_file)
+        try:
+            with pytest.raises(ValueError, match="Unknown context source"):
+                trail.log("test", source="retreiver:pinecone")
+            assert trail.summary()["total"] == 0
+        finally:
+            trail.close()
+
     def test_load_yml_extension(self, tmp_path):
         config_file = tmp_path / "provena.yml"
         config_file.write_text("storage:\n  backend: memory\n")
