@@ -324,6 +324,14 @@ class ContextTrail:
         """Whether this trail uses HMAC-signed hash chains."""
         return self._hasher.is_signed
 
+    def sign_payload(self, payload: bytes) -> str | None:
+        """Sign external bytes with this trail's HMAC key when configured."""
+        return self._hasher.sign_payload(payload)
+
+    def verify_payload_signature(self, payload: bytes, signature: str | None) -> bool:
+        """Verify an HMAC signature made with this trail's configured key."""
+        return self._hasher.verify_payload_signature(payload, signature)
+
     def log(
         self,
         content: str | bytes,

@@ -51,6 +51,19 @@ class ChainHasher:
             ).hexdigest()
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
+    def sign_payload(self, payload: bytes) -> str | None:
+        """Return an HMAC-SHA256 signature when signing is enabled."""
+        if self._signing_key is None:
+            return None
+        return hmac.new(self._signing_key, payload, hashlib.sha256).hexdigest()
+
+    def verify_payload_signature(self, payload: bytes, signature: str | None) -> bool:
+        """Verify a payload signature using constant-time comparison."""
+        if self._signing_key is None or not isinstance(signature, str):
+            return False
+        expected = self.sign_payload(payload)
+        return expected is not None and hmac.compare_digest(expected, signature)
+
     def verify_link(
         self,
         previous_hash: str,
