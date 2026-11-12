@@ -590,3 +590,13 @@ def test_query_order_desc_returns_newest_first(memory_backend):
 def test_query_order_invalid_raises(memory_backend):
     with pytest.raises(ValueError, match="order must be"):
         memory_backend.query(order="sideways")
+
+
+def test_sqlite_query_order_desc_returns_newest_first(sqlite_backend):
+    """SQLiteBackend.query(order='desc') returns newest records first (mirrors memory test)."""
+    for i in range(5):
+        sqlite_backend.append(_make_record(source_name=f"item-{i}"))
+    asc = sqlite_backend.query(limit=3)
+    desc = sqlite_backend.query(limit=3, order="desc")
+    assert [r["source_name"] for r in asc] == ["item-0", "item-1", "item-2"]
+    assert [r["source_name"] for r in desc] == ["item-4", "item-3", "item-2"]
