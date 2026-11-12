@@ -516,7 +516,7 @@ class ContextTrail:
         Returns:
             A decorator that wraps the target function with trail logging.
         """
-        if self._strict_source:
+        if not _DISABLED and self._strict_source:
             source, source_name = _parse_source(source, source_name, strict_source=True)
         override_engine = PolicyEngine(policies) if policies is not None else None
 

@@ -606,6 +606,18 @@ class TestStrictSource:
         finally:
             trail.close()
 
+    def test_disabled_track_skips_strict_source_validation(self, monkeypatch):
+        from provena import trail as trail_module
+
+        monkeypatch.setattr(trail_module, "_DISABLED", True)
+        trail = ContextTrail(backend="memory", strict_source=True)
+        try:
+            tracked = trail.track(source="retreiver:pinecone")(lambda: "result")
+            assert tracked() == "result"
+            assert trail.summary()["total"] == 0
+        finally:
+            trail.close()
+
 
 class TestContextTrailQuery:
     def test_query_all(self, memory_trail):
