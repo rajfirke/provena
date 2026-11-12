@@ -350,6 +350,14 @@ class ContextTrail:
             In buffered mode the record has not reached the backend yet, so
             its ``id`` is the placeholder ``-1`` rather than a persisted row
             id. Call ``flush()`` before using it with ``annotate()``.
+
+            ``chain_hash`` and ``previous_hash`` are provisional in buffered
+            mode for the same reason. A backend that repairs links on write
+            (PostgreSQL recomputes both when the submitted ``previous_hash``
+            is no longer the tip) does so at flush time, after this record
+            was returned, so the stored pair can differ. Read the flushed row
+            back if you need the receipt that matches the table. Records
+            logged after the buffer has drained are unaffected.
         """
         try:
             return self._log_internal(
@@ -390,6 +398,16 @@ class ContextTrail:
         )
 
         with self._lock:
+            if self._buffer is not None:
+                # A flush may have repaired the links it stored, and the
+                # receipts for those records were handed back before the
+                # repair happened. Pick the stored tip back up so later
+                # records chain off a hash the table actually holds instead
+                # of drifting further with every append.
+                settled_tip = self._buffer.settled_tip()
+                if settled_tip is not None:
+                    self._previous_hash = settled_tip
+
             prev_hash = self._previous_hash
             chain_hash = self._hasher.compute_chain_hash(
                 previous_hash=prev_hash,
