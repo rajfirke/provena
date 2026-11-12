@@ -117,6 +117,12 @@ class TestInMemoryBackend:
         assert records[0]["content_hash"] == "h1"
         assert records[1]["content_hash"] == "h2"
 
+    def test_iter_records_uses_call_time_snapshot(self, memory_backend):
+        memory_backend.append(_make_record(content_hash="h1"))
+        records = memory_backend.iter_records()
+        memory_backend.append(_make_record(content_hash="h2"))
+        assert [record["content_hash"] for record in records] == ["h1"]
+
     def test_query_by_source(self, memory_backend):
         memory_backend.append(_make_record(source="retriever"))
         memory_backend.append(_make_record(source="tool"))
@@ -219,6 +225,12 @@ class TestSQLiteBackend:
         sqlite_backend.append(_make_record(content_hash="h3"))
         records = sqlite_backend.all_records()
         assert [r["content_hash"] for r in records] == ["h1", "h2", "h3"]
+
+    def test_iter_records_uses_call_time_snapshot(self, sqlite_backend):
+        sqlite_backend.append(_make_record(content_hash="h1"))
+        records = sqlite_backend.iter_records()
+        sqlite_backend.append(_make_record(content_hash="h2"))
+        assert [record["content_hash"] for record in records] == ["h1"]
 
     def test_query_by_source(self, sqlite_backend):
         sqlite_backend.append(_make_record(source="retriever"))
