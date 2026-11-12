@@ -187,3 +187,13 @@ class TestPostgreSQLImportError:
 
         with pytest.raises(ImportError, match="psycopg"):
             PostgreSQLBackend(conninfo="postgresql://localhost/test")
+
+
+def test_pg_query_order_desc_returns_newest_first(pg_backend):
+    """PostgreSQLBackend.query(order='desc') returns newest records first."""
+    for i in range(5):
+        pg_backend.append(_make_record(source_name=f"item-{i}"))
+    asc = pg_backend.query(limit=3)
+    desc = pg_backend.query(limit=3, order="desc")
+    assert [r["source_name"] for r in asc] == ["item-0", "item-1", "item-2"]
+    assert [r["source_name"] for r in desc] == ["item-4", "item-3", "item-2"]
