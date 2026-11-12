@@ -300,7 +300,7 @@ class ChainVerdict:
 
 
 def _parse_source(
-    source: ContextSource | str, source_name: str
+    source: ContextSource | str, source_name: str, *, strict_source: bool = False
 ) -> tuple[ContextSource, str]:
     if isinstance(source, ContextSource):
         return source, source_name or source.value
@@ -308,7 +308,9 @@ def _parse_source(
     parts = source.split(":", 1)
     try:
         source_enum = ContextSource(parts[0])
-    except ValueError:
+    except ValueError as exc:
+        if strict_source:
+            raise ValueError(f"Unknown context source: {source!r}") from exc
         source_enum = ContextSource.CUSTOM
 
     if len(parts) > 1 and not source_name:

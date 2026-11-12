@@ -19,6 +19,19 @@ class TestTOMLConfig:
         assert trail.summary()["total"] == 1
         trail.close()
 
+    def test_toml_strict_source_rejects_unknown_source(self, tmp_path):
+        config_file = tmp_path / "provena.toml"
+        config_file.write_text(
+            'strict_source = true\n\n[storage]\nbackend = "memory"\n'
+        )
+        trail = ContextTrail(config=config_file)
+        try:
+            with pytest.raises(ValueError, match="Unknown context source"):
+                trail.log("test", source="retreiver:pinecone")
+            assert trail.summary()["total"] == 0
+        finally:
+            trail.close()
+
     def test_load_toml_pathlib(self, tmp_path):
         config_file = tmp_path / "provena.toml"
         config_file.write_text('[storage]\nbackend = "memory"\n')

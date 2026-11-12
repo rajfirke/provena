@@ -24,6 +24,7 @@ from provena.models import (
     ContextSource,
     ProvenanceMetadata,
     TrailRecord,
+    _parse_source,
     parse_isoformat,
 )
 from provena.policy import (
@@ -81,6 +82,7 @@ class ContextTrail:
         otel_enabled: bool = False,
         otel_service_name: str = "provena",
         strict_mode: bool = False,
+        strict_source: bool = False,
         on_error: Callable[[Exception], None] | None = None,
         policies: list[Policy] | None = None,
         buffered: bool = False,
@@ -105,6 +107,7 @@ class ContextTrail:
             otel_enabled: Emit OpenTelemetry spans for each logged entry.
             otel_service_name: Service name for OTel spans.
             strict_mode: If True, governance errors propagate as exceptions.
+            strict_source: If True, unknown source strings raise ValueError.
             on_error: Optional callback invoked on governance errors.
             policies: List of Policy objects to enforce on every logged entry.
             buffered: If True, batch writes via a background thread.
@@ -116,7 +119,8 @@ class ContextTrail:
             config: Configuration dict, or path to a ``.toml``/``.yaml`` file.
 
         Raises:
-            ValueError: If max_age_days or max_content_bytes is less than 1.
+            ValueError: If max_age_days or max_content_bytes is less than 1, or
+                strict_source is enabled and a source string is unknown.
         """
         if config is not None:
             overridden = []
@@ -128,6 +132,8 @@ class ContextTrail:
                 overridden.append("signing_key")
             if strict_mode:
                 overridden.append("strict_mode")
+            if strict_source:
+                overridden.append("strict_source")
             if advisory_lock_key is not None:
                 overridden.append("advisory_lock_key")
             if overridden:
@@ -143,6 +149,7 @@ class ContextTrail:
         _validate_config(max_age_days=max_age_days, max_content_bytes=max_content_bytes)
 
         self._strict = strict_mode
+        self._strict_source = strict_source
         self._on_error = on_error
         self._max_content_bytes = max_content_bytes
         self._error_count = 0
@@ -202,6 +209,7 @@ class ContextTrail:
         _validate_config(max_age_days=max_age, max_content_bytes=max_bytes)
 
         self._strict = config.get("strict_mode", False)
+        self._strict_source = config.get("strict_source", False)
         self._on_error = None
         self._max_content_bytes = max_bytes
         self._error_count = 0
@@ -312,6 +320,8 @@ class ContextTrail:
                 [p.name, p.enforcement.value] for p in self._policy_engine.policies
             ),
         }
+        if self._strict_source:
+            payload["strict_source"] = True
         return content_hash(json.dumps(payload, sort_keys=True).encode("utf-8"))
 
     @property
@@ -351,6 +361,8 @@ class ContextTrail:
             its ``id`` is the placeholder ``-1`` rather than a persisted row
             id. Call ``flush()`` before using it with ``annotate()``.
         """
+        if self._strict_source:
+            source, source_name = _parse_source(source, source_name, strict_source=True)
         try:
             return self._log_internal(
                 content,
@@ -504,6 +516,8 @@ class ContextTrail:
         Returns:
             A decorator that wraps the target function with trail logging.
         """
+        if self._strict_source:
+            source, source_name = _parse_source(source, source_name, strict_source=True)
         override_engine = PolicyEngine(policies) if policies is not None else None
 
         def decorator(func: F) -> F:

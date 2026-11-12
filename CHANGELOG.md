@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **`ContextTrail` can reject unknown context sources with `strict_source=True`.** The default remains permissive, and the setting is also available as a top-level TOML/YAML/dict config value.
 - **`PostgreSQLBackend` and `ContextTrail` accept an optional `advisory_lock_key`.** The key is an int or an int pair, passed as a kwarg or through TOML/YAML/dict config. The default stays `1`, so rolling upgrades keep one lock. Use a distinct key only for a second chain in the same database, for example under another `search_path` (#248)
 
 ### Changed
