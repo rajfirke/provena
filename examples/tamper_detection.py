@@ -6,8 +6,11 @@ import tempfile
 
 from provena import ContextTrail
 
-# Create a trail with HMAC signing (compliance mode)
-db_path = tempfile.mktemp(suffix=".db")
+# Create a trail with HMAC signing (compliance mode).
+# mkdtemp() creates a private, race-free directory; the deprecated
+# tempfile.mktemp() path can be raced to a symlink before first use.
+tmpdir = tempfile.mkdtemp()
+db_path = os.path.join(tmpdir, "tamper_demo.db")
 trail = ContextTrail(storage_path=db_path, signing_key="my-secret-key")
 
 # Log some context entries
@@ -36,4 +39,5 @@ trail.close()
 
 # Cleanup
 os.unlink(db_path)
+os.rmdir(tmpdir)
 print("\nTamper detection working correctly!")
