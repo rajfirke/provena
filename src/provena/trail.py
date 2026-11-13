@@ -24,6 +24,7 @@ from provena.models import (
     ContextSource,
     ProvenanceMetadata,
     TrailRecord,
+    _parse_source,
     parse_isoformat,
 )
 from provena.policy import (
@@ -81,6 +82,7 @@ class ContextTrail:
         otel_enabled: bool = False,
         otel_service_name: str = "provena",
         strict_mode: bool = False,
+        strict_source: bool = False,
         on_error: Callable[[Exception], None] | None = None,
         policies: list[Policy] | None = None,
         buffered: bool = False,
@@ -105,6 +107,7 @@ class ContextTrail:
             otel_enabled: Emit OpenTelemetry spans for each logged entry.
             otel_service_name: Service name for OTel spans.
             strict_mode: If True, governance errors propagate as exceptions.
+            strict_source: If True, unknown source strings raise ValueError.
             on_error: Optional callback invoked on governance errors.
             policies: List of Policy objects to enforce on every logged entry.
             buffered: If True, batch writes via a background thread.
@@ -116,7 +119,8 @@ class ContextTrail:
             config: Configuration dict, or path to a ``.toml``/``.yaml`` file.
 
         Raises:
-            ValueError: If max_age_days or max_content_bytes is less than 1.
+            ValueError: If max_age_days or max_content_bytes is less than 1, or
+                strict_source is enabled and a source string is unknown.
         """
         if config is not None:
             overridden = []
@@ -128,6 +132,8 @@ class ContextTrail:
                 overridden.append("signing_key")
             if strict_mode:
                 overridden.append("strict_mode")
+            if strict_source:
+                overridden.append("strict_source")
             if advisory_lock_key is not None:
                 overridden.append("advisory_lock_key")
             if overridden:
@@ -143,6 +149,7 @@ class ContextTrail:
         _validate_config(max_age_days=max_age_days, max_content_bytes=max_content_bytes)
 
         self._strict = strict_mode
+        self._strict_source = strict_source
         self._on_error = on_error
         self._max_content_bytes = max_content_bytes
         self._error_count = 0
@@ -202,6 +209,7 @@ class ContextTrail:
         _validate_config(max_age_days=max_age, max_content_bytes=max_bytes)
 
         self._strict = config.get("strict_mode", False)
+        self._strict_source = config.get("strict_source", False)
         self._on_error = None
         self._max_content_bytes = max_bytes
         self._error_count = 0
@@ -312,6 +320,8 @@ class ContextTrail:
                 [p.name, p.enforcement.value] for p in self._policy_engine.policies
             ),
         }
+        if self._strict_source:
+            payload["strict_source"] = True
         return content_hash(json.dumps(payload, sort_keys=True).encode("utf-8"))
 
     @property
@@ -323,6 +333,14 @@ class ContextTrail:
     def is_signed(self) -> bool:
         """Whether this trail uses HMAC-signed hash chains."""
         return self._hasher.is_signed
+
+    def sign_payload(self, payload: bytes) -> str | None:
+        """Sign external bytes with this trail's HMAC key when configured."""
+        return self._hasher.sign_payload(payload)
+
+    def verify_payload_signature(self, payload: bytes, signature: str | None) -> bool:
+        """Verify an HMAC signature made with this trail's configured key."""
+        return self._hasher.verify_payload_signature(payload, signature)
 
     def log(
         self,
@@ -350,7 +368,17 @@ class ContextTrail:
             In buffered mode the record has not reached the backend yet, so
             its ``id`` is the placeholder ``-1`` rather than a persisted row
             id. Call ``flush()`` before using it with ``annotate()``.
+
+            ``chain_hash`` and ``previous_hash`` are provisional in buffered
+            mode for the same reason. A backend that repairs links on write
+            (PostgreSQL recomputes both when the submitted ``previous_hash``
+            is no longer the tip) does so at flush time, after this record
+            was returned, so the stored pair can differ. Read the flushed row
+            back if you need the receipt that matches the table. Records
+            logged after the buffer has drained are unaffected.
         """
+        if self._strict_source:
+            source, source_name = _parse_source(source, source_name, strict_source=True)
         try:
             return self._log_internal(
                 content,
@@ -390,6 +418,16 @@ class ContextTrail:
         )
 
         with self._lock:
+            if self._buffer is not None:
+                # A flush may have repaired the links it stored, and the
+                # receipts for those records were handed back before the
+                # repair happened. Pick the stored tip back up so later
+                # records chain off a hash the table actually holds instead
+                # of drifting further with every append.
+                settled_tip = self._buffer.settled_tip()
+                if settled_tip is not None:
+                    self._previous_hash = settled_tip
+
             prev_hash = self._previous_hash
             chain_hash = self._hasher.compute_chain_hash(
                 previous_hash=prev_hash,
@@ -504,6 +542,8 @@ class ContextTrail:
         Returns:
             A decorator that wraps the target function with trail logging.
         """
+        if not _DISABLED and self._strict_source:
+            source, source_name = _parse_source(source, source_name, strict_source=True)
         override_engine = PolicyEngine(policies) if policies is not None else None
 
         def decorator(func: F) -> F:
@@ -658,10 +698,10 @@ class ContextTrail:
         """Verify the integrity of the entire hash chain.
 
         Flushes pending buffered records, then reads the backend, both while
-        holding the same lock as ``log()``. The hash walk runs on that
-        snapshot after the lock is released, so a concurrent ``log()`` cannot
-        append between the flush and the read. ``total_records`` is the size
-        of that snapshot.
+        holding the same lock as ``log()``. The backend captures the snapshot's
+        highest record ID before the lock is released, so a concurrent ``log()``
+        cannot append to the chain being checked. The hash walk streams that
+        bounded snapshot and counts its records.
 
         Recomputes every chain hash from the genesis hash forward and checks
         each against the stored value.
@@ -672,54 +712,69 @@ class ContextTrail:
         with self._lock:
             if self._buffer is not None:
                 self._buffer.flush()
-            records = self._backend.all_records()
-        if not records:
-            return ChainVerdict(intact=True, total_records=0, details="Empty trail")
+            records = self._backend.iter_records()
 
+        total_records = 0
+        broken_at: int | None = None
+        details = ""
         previous_hash = GENESIS_HASH
-        for record in records:
-            stored_previous = record.get("previous_hash")
-            if not isinstance(stored_previous, str) or not hmac.compare_digest(
-                previous_hash, stored_previous
-            ):
-                return ChainVerdict(
-                    intact=False,
-                    total_records=len(records),
-                    broken_at=record["id"],
-                    details=(
+        close = getattr(records, "close", None)
+        try:
+            for record in records:
+                total_records += 1
+                if broken_at is not None:
+                    continue
+
+                stored_previous = record.get("previous_hash")
+                if not isinstance(stored_previous, str) or not hmac.compare_digest(
+                    previous_hash, stored_previous
+                ):
+                    broken_at = record["id"]
+                    details = (
                         f"Chain broken at record {record['id']} — "
                         f"previous_hash is {stored_previous!r}"
                         if not isinstance(stored_previous, str)
                         else f"Chain broken at record {record['id']}"
-                    ),
-                )
+                    )
+                    continue
 
-            expected = self._hasher.compute_chain_hash(
-                previous_hash=previous_hash,
-                content_hash=record["content_hash"],
-                source=record["source"],
-                timestamp=record["timestamp"],
-            )
-            stored_hash = record.get("chain_hash")
-            if not isinstance(stored_hash, str) or not hmac.compare_digest(
-                expected, stored_hash
-            ):
-                return ChainVerdict(
-                    intact=False,
-                    total_records=len(records),
-                    broken_at=record["id"],
-                    details=(
+                expected = self._hasher.compute_chain_hash(
+                    previous_hash=previous_hash,
+                    content_hash=record["content_hash"],
+                    source=record["source"],
+                    timestamp=record["timestamp"],
+                )
+                stored_hash = record.get("chain_hash")
+                if not isinstance(stored_hash, str) or not hmac.compare_digest(
+                    expected, stored_hash
+                ):
+                    broken_at = record["id"]
+                    details = (
                         f"Chain broken at record {record['id']} — "
                         f"chain_hash is {stored_hash!r}"
                         if not isinstance(stored_hash, str)
                         else f"Chain broken at record {record['id']}"
-                    ),
-                )
-            previous_hash = stored_hash
+                    )
+                    continue
+                previous_hash = stored_hash
+        finally:
+            if callable(close):
+                close()
+
+        if not total_records:
+            return ChainVerdict(intact=True, total_records=0, details="Empty trail")
+
+        if broken_at is not None:
+            return ChainVerdict(
+                intact=False,
+                total_records=total_records,
+                broken_at=broken_at,
+                details=details,
+            )
 
         return ChainVerdict(
             intact=True,
-            total_records=len(records),
+            total_records=total_records,
             details="Chain intact",
         )
 

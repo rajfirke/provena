@@ -134,6 +134,12 @@ class TestPostgreSQLBackendCRUD:
         assert records[0]["content_hash"] == "a"
         assert records[2]["content_hash"] == "c"
 
+    def test_iter_records_uses_call_time_snapshot(self, pg_backend):
+        pg_backend.append(_make_record(content_hash="a"))
+        records = pg_backend.iter_records()
+        pg_backend.append(_make_record(content_hash="b"))
+        assert [record["content_hash"] for record in records] == ["a"]
+
     def test_truncated_normalized_to_int(self, pg_backend):
         pg_backend.append(_make_record(truncated=True))
         record = pg_backend.get(1)
@@ -480,3 +486,84 @@ class TestPostgreSQLTimeZone:
             assert tz == "UTC"
         finally:
             backend.close()
+
+
+class TestPostgreSQLBufferedTipResync:
+    def test_buffered_trail_stops_repairing_after_a_flush(self, pg_backend):
+        # A buffered trail computes each chain hash locally and the record
+        # reaches PostgreSQL later, at flush. If another writer moved the tip
+        # in between, append() repairs both hashes on the way in. The trail
+        # used to keep its locally computed hash, so every later record chained
+        # off a hash the table does not hold and was repaired in turn: one
+        # interleaved write left the trail repairing forever, paying an extra
+        # tip SELECT and a rehash on every insert. The stored chain stayed
+        # intact throughout, because the repair is unconditional, so nothing
+        # surfaced the drift.
+        from provena import ContextTrail
+
+        buffered = ContextTrail(
+            storage_path=_pg_conninfo, buffered=True, flush_interval=3600
+        )
+        other = ContextTrail(storage_path=_pg_conninfo)
+        repairs = []
+
+        original_append = buffered._backend.append
+
+        def counting_append(record):
+            submitted = record["chain_hash"]
+            record_id = original_append(record)
+            if record["chain_hash"] != submitted:
+                repairs.append(record_id)
+            return record_id
+
+        buffered._backend.append = counting_append
+
+        try:
+            buffered.log("first", source="retriever")
+            buffered.flush()
+
+            # One interleaved write moves the tip out from under the trail.
+            other.log("interloper", source="retriever")
+
+            for i in range(5):
+                buffered.log(f"solo {i}", source="retriever")
+                buffered.flush()
+
+            # Exactly one repair: the record logged against the stale tip.
+            # Without the resync every one of the five is repaired as well.
+            assert len(repairs) == 1
+            assert buffered.verify_chain().intact
+        finally:
+            buffered.close()
+            other.close()
+
+    def test_buffered_receipt_matches_stored_row_once_the_tip_is_resynced(
+        self, pg_backend
+    ):
+        # The receipt for a record that was already pending when the tip moved
+        # cannot be corrected: log() returned it before the flush repaired it.
+        # Every record logged after the buffer drains gets an accurate one.
+        from provena import ContextTrail
+
+        buffered = ContextTrail(
+            storage_path=_pg_conninfo, buffered=True, flush_interval=3600
+        )
+        other = ContextTrail(storage_path=_pg_conninfo)
+        try:
+            buffered.log("pending when the tip moves", source="retriever")
+            other.log("interloper", source="retriever")
+            buffered.flush()
+
+            record = buffered.log("logged after the drain", source="retriever")
+            buffered.flush()
+
+            stored = next(
+                row
+                for row in other.query(limit=100)
+                if row["content_hash"] == record.entry.content_hash
+            )
+            assert record.chain_hash == stored["chain_hash"]
+            assert record.previous_hash == stored["previous_hash"]
+        finally:
+            buffered.close()
+            other.close()

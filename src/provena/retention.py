@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from dataclasses import dataclass
@@ -44,6 +45,7 @@ class RetentionEngine:
     #: attribute (rather than a hardcoded literal) so tests can shrink it to
     #: exercise the multi-batch pagination path without inserting 10k+ rows.
     _QUERY_BATCH_SIZE = 10000
+    _AUDIT_RECORD_ID_LIMIT = 100
 
     def __init__(
         self,
@@ -152,6 +154,8 @@ class RetentionEngine:
             )
 
         archived_count = 0
+        archive_sha256 = None
+        archive_hmac_sha256 = None
         if archive_path:
             archive_data = {
                 "archived_at": (now or datetime.now(timezone.utc)).isoformat(),
@@ -166,63 +170,89 @@ class RetentionEngine:
                     if anns:
                         record["_annotations"] = anns
 
-            with open(archive_path, "w") as f:
-                json.dump(archive_data, f, indent=2, default=str)
+            archive_bytes = json.dumps(archive_data, indent=2, default=str).encode(
+                "utf-8"
+            )
+            archive_sha256 = hashlib.sha256(archive_bytes).hexdigest()
+            archive_hmac_sha256 = self._trail.sign_payload(archive_bytes)
+            with open(archive_path, "wb") as f:
+                f.write(archive_bytes)
             archived_count = len(expired)
             _logger.info("Archived %d records to %s", archived_count, archive_path)
 
-        deleted_count = self._delete_expired(expired)
+        purged_ids = sorted(self._delete_expired(expired))
+        records_by_id = {record["id"]: record for record in expired if "id" in record}
+        chain_hash_pairs = [
+            [record_id, records_by_id[record_id].get("chain_hash")]
+            for record_id in purged_ids
+        ]
+        payload = {
+            "action": "retention_purge",
+            "deleted": len(purged_ids),
+            "archived": archived_count,
+            "archive_path": archive_path,
+            "archive_sha256": archive_sha256,
+            "archive_hmac_sha256": archive_hmac_sha256,
+            "retention_days": self._retention_days,
+            "purged_record_ids": purged_ids[: self._AUDIT_RECORD_ID_LIMIT],
+            "purged_record_ids_truncated": len(purged_ids)
+            > self._AUDIT_RECORD_ID_LIMIT,
+            "purged_record_ids_sha256": hashlib.sha256(
+                json.dumps(purged_ids, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "purged_chain_hashes_sha256": hashlib.sha256(
+                json.dumps(chain_hash_pairs, separators=(",", ":")).encode()
+            ).hexdigest(),
+        }
 
         self._trail.log(
-            content=json.dumps(
-                {
-                    "action": "retention_purge",
-                    "deleted": deleted_count,
-                    "archived": archived_count,
-                    "archive_path": archive_path,
-                    "retention_days": self._retention_days,
-                }
-            ),
+            content=json.dumps(payload, separators=(",", ":")),
             source="custom",
             source_name="provena:retention",
         )
 
         return RetentionResult(
             archived=archived_count,
-            deleted=deleted_count,
+            deleted=len(purged_ids),
             archive_path=archive_path,
-            details=f"Purged {deleted_count} records older than {self._retention_days} days",
+            details=f"Purged {len(purged_ids)} records older than {self._retention_days} days",
         )
 
-    def _delete_expired(self, expired: list[dict[str, Any]]) -> int:
+    def _delete_expired(self, expired: list[dict[str, Any]]) -> list[int]:
         backend = self._trail._backend
-        expired_ids = [r["id"] for r in expired if "id" in r]
+        expired_ids = [
+            r["id"] for r in expired if isinstance(r.get("id"), int) and r["id"] > 0
+        ]
 
         if not expired_ids:
-            return 0
+            return []
 
         tombstone_meta = json.dumps({"_tombstone": True})
 
         if hasattr(backend, "_conn") and backend._conn is not None:
-            placeholders = ",".join("?" * len(expired_ids))
+            deleted_ids: list[int] = []
             with backend._lock:
-                backend._conn.execute(
-                    f"DELETE FROM annotations WHERE record_id IN ({placeholders})",
-                    expired_ids,
-                )
                 for rid in expired_ids:
-                    backend._conn.execute(
+                    cursor = backend._conn.execute(
                         "UPDATE trail SET provenance_json = NULL, "
                         "missing_fields = '', metadata_json = ?, "
                         "source_name = 'retained' WHERE id = ?",
                         (tombstone_meta, rid),
                     )
+                    if cursor.rowcount:
+                        deleted_ids.append(rid)
+                if deleted_ids:
+                    placeholders = ",".join("?" * len(deleted_ids))
+                    backend._conn.execute(
+                        f"DELETE FROM annotations WHERE record_id IN ({placeholders})",
+                        deleted_ids,
+                    )
                 backend._conn.commit()
-            return len(expired_ids)
+            return deleted_ids
 
         if hasattr(backend, "_records"):
             id_set = set(expired_ids)
-            count = 0
+            deleted_ids = []
             with backend._lock:
                 for r in backend._records:
                     if r.get("id") in id_set:
@@ -230,28 +260,34 @@ class RetentionEngine:
                         r["missing_fields"] = ""
                         r["metadata_json"] = tombstone_meta
                         r["source_name"] = "retained"
-                        count += 1
+                        deleted_ids.append(r["id"])
+                deleted_id_set = set(deleted_ids)
                 backend._annotations = [
-                    a for a in backend._annotations if a.get("record_id") not in id_set
+                    a
+                    for a in backend._annotations
+                    if a.get("record_id") not in deleted_id_set
                 ]
-            return count
+            return deleted_ids
 
         if hasattr(backend, "_pool"):
+            deleted_ids = []
             with backend._pool.connection() as conn:
                 with conn.cursor() as cur:
                     for rid in expired_ids:
-                        cur.execute(
-                            "DELETE FROM annotations WHERE record_id = %s",
-                            (rid,),
-                        )
                         cur.execute(
                             "UPDATE trail SET provenance_json = NULL, "
                             "missing_fields = '', metadata_json = %s, "
                             "source_name = 'retained' WHERE id = %s",
                             (tombstone_meta, rid),
                         )
+                        if cur.rowcount:
+                            deleted_ids.append(rid)
+                            cur.execute(
+                                "DELETE FROM annotations WHERE record_id = %s",
+                                (rid,),
+                            )
                 conn.commit()
-            return len(expired_ids)
+            return deleted_ids
 
         _logger.warning("Backend does not support retention")
-        return 0
+        return []
