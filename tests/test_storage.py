@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import os
+import sqlite3
 import tempfile
 import threading
 from datetime import datetime, timezone
 
 import pytest
 
+from provena.hasher import GENESIS_HASH, ChainHasher
 from provena.storage import SQLiteBackend
+from provena.trail import ContextTrail
 
 
 def _make_record(**overrides):
@@ -242,12 +246,82 @@ class TestSQLiteBackend:
             os.unlink(db_path)
 
     def test_schema_version(self, sqlite_backend):
-        import sqlite3
-
         conn = sqlite3.connect(sqlite_backend._path)
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         conn.close()
-        assert version == 2
+        assert version == 3
+
+    def test_content_hash_version_round_trips(self, sqlite_backend):
+        sqlite_backend.append(_make_record(content_hash_version=2))
+
+        stored = sqlite_backend.get(1)
+        assert stored is not None
+        assert stored["content_hash_version"] == 2
+
+    def test_migrates_legacy_truncated_row_and_keeps_chain_valid(self, tmp_path):
+        path = str(tmp_path / "legacy.db")
+        timestamp = "2026-07-13T00:00:00+00:00"
+        legacy_content_hash = hashlib.sha256(b"x" * (64 * 1024)).hexdigest()
+        chain_hash = ChainHasher().compute_chain_hash(
+            GENESIS_HASH, legacy_content_hash, "retriever", timestamp
+        )
+        conn = sqlite3.connect(path)
+        conn.executescript(
+            """
+            CREATE TABLE trail (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content_hash TEXT NOT NULL,
+                source TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                provenance_json TEXT,
+                provenance_status TEXT NOT NULL DEFAULT 'MISSING',
+                missing_fields TEXT NOT NULL DEFAULT '',
+                freshness_status TEXT NOT NULL DEFAULT 'UNKNOWN',
+                chain_hash TEXT NOT NULL,
+                previous_hash TEXT NOT NULL,
+                config_hash TEXT NOT NULL DEFAULT '',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                content_type TEXT NOT NULL DEFAULT 'str',
+                truncated INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE annotations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                record_id INTEGER NOT NULL,
+                note TEXT NOT NULL,
+                reviewer TEXT NOT NULL DEFAULT '',
+                timestamp TEXT NOT NULL,
+                FOREIGN KEY (record_id) REFERENCES trail(id)
+            );
+            PRAGMA user_version = 2;
+            """
+        )
+        conn.execute(
+            "INSERT INTO trail (content_hash, source, source_name, timestamp, "
+            "chain_hash, previous_hash, truncated) VALUES (?, ?, ?, ?, ?, ?, 1)",
+            (
+                legacy_content_hash,
+                "retriever",
+                "legacy",
+                timestamp,
+                chain_hash,
+                GENESIS_HASH,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        backend = SQLiteBackend(path=path)
+        stored = backend.get(1)
+        assert stored is not None
+        assert stored["content_hash_version"] == 1
+        backend.close()
+
+        trail = ContextTrail(storage_path=path)
+        verdict = trail.verify_chain()
+        assert verdict.intact
+        assert verdict.total_records == 1
+        trail.close()
 
     def test_wal_mode(self, sqlite_backend):
         import sqlite3

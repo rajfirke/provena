@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+# Same key as before #248, so old and new writers share one lock.
+_DEFAULT_ADVISORY_LOCK_KEY = 1
+
+_MIN_INT32 = -(2**31)
+_MAX_INT32 = 2**31 - 1
+_MIN_INT64 = -(2**63)
+_MAX_INT64 = 2**63 - 1
+
+AdvisoryLockKey = int | tuple[int, int] | list[int]
 
 _CREATE_TRAIL = """\
 CREATE TABLE IF NOT EXISTS trail (
@@ -24,7 +34,8 @@ CREATE TABLE IF NOT EXISTS trail (
     config_hash       TEXT NOT NULL DEFAULT '',
     metadata_json     JSONB NOT NULL DEFAULT '{}',
     content_type      TEXT NOT NULL DEFAULT 'str',
-    truncated         BOOLEAN NOT NULL DEFAULT FALSE
+    truncated         BOOLEAN NOT NULL DEFAULT FALSE,
+    content_hash_version SMALLINT NOT NULL DEFAULT 1
 );
 """
 
@@ -54,12 +65,61 @@ CREATE TABLE IF NOT EXISTS provena_meta (
 """
 
 
+def _coerce_advisory_lock_key(
+    key: AdvisoryLockKey | None,
+) -> int | tuple[int, int]:
+    """Validate and normalize an advisory lock key.
+
+    ``None`` means the default key ``1``. A single integer maps to
+    PostgreSQL's one-argument ``pg_advisory_xact_lock(bigint)``; a pair maps
+    to the two-argument ``pg_advisory_xact_lock(int, int)`` overload.
+
+    Raises:
+        ValueError: If the key is not an int or a pair of ints, or if a value
+            does not fit the PostgreSQL advisory lock argument range.
+    """
+    if key is None:
+        return _DEFAULT_ADVISORY_LOCK_KEY
+    if isinstance(key, bool):
+        raise ValueError("advisory_lock_key must be an int or a pair of ints")
+    if isinstance(key, int):
+        if not _MIN_INT64 <= key <= _MAX_INT64:
+            raise ValueError(
+                "advisory_lock_key int must fit in a signed 64-bit integer"
+            )
+        return key
+    if isinstance(key, (tuple, list)):
+        if len(key) != 2 or any(
+            isinstance(part, bool) or not isinstance(part, int) for part in key
+        ):
+            raise ValueError("advisory_lock_key must be an int or a pair of ints")
+        first, second = key
+        if not (
+            _MIN_INT32 <= first <= _MAX_INT32 and _MIN_INT32 <= second <= _MAX_INT32
+        ):
+            raise ValueError(
+                "advisory_lock_key pair values must fit in signed 32-bit integers"
+            )
+        return (first, second)
+    raise ValueError("advisory_lock_key must be an int or a pair of ints")
+
+
 class PostgreSQLBackend:
     """PostgreSQL-based storage backend with connection pooling.
 
     Uses psycopg v3 with ``psycopg_pool.ConnectionPool`` for concurrent
     access. Chain hash ordering is enforced via ``pg_advisory_xact_lock``.
+
+    By default the lock key is ``1``, the key earlier versions use, so old
+    and new writers stay serialized during a rolling upgrade. The table
+    names are fixed, so one schema holds one chain. For a second chain in
+    the same database (for example under another ``search_path``), give
+    that chain its own ``advisory_lock_key`` (an int or an ``(int, int)``
+    pair). Every writer of one chain must use the same key, or appends
+    can fork the chain.
     """
+
+    _advisory_lock_key: int | tuple[int, int] = _DEFAULT_ADVISORY_LOCK_KEY
 
     def __init__(
         self,
@@ -67,7 +127,9 @@ class PostgreSQLBackend:
         pool_size: int = 5,
         min_pool_size: int = 1,
         hasher: Any = None,
+        advisory_lock_key: AdvisoryLockKey | None = None,
     ) -> None:
+        lock_key = _coerce_advisory_lock_key(advisory_lock_key)
         try:
             from psycopg_pool import ConnectionPool
         except ImportError:
@@ -81,15 +143,28 @@ class PostgreSQLBackend:
             min_size=min_pool_size,
             max_size=pool_size,
             open=True,
+            configure=_set_utc,
         )
         self._hasher = hasher
+        self._advisory_lock_key = lock_key
         self._init_schema()
+
+    def _advisory_lock_sql(self) -> tuple[str, tuple[Any, ...]]:
+        """Return the advisory lock statement and its parameters."""
+        key = self._advisory_lock_key
+        if isinstance(key, tuple):
+            return "SELECT pg_advisory_xact_lock(%s, %s)", key
+        return "SELECT pg_advisory_xact_lock(%s)", (key,)
 
     def _init_schema(self) -> None:
         with self._pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(_SCHEMA_VERSION_TABLE)
                 cur.execute(_CREATE_TRAIL)
+                cur.execute(
+                    "ALTER TABLE trail ADD COLUMN IF NOT EXISTS "
+                    "content_hash_version SMALLINT NOT NULL DEFAULT 1"
+                )
                 cur.execute(_CREATE_ANNOTATIONS)
                 for stmt in _CREATE_INDEXES.strip().split(";"):
                     stmt = stmt.strip()
@@ -110,7 +185,8 @@ class PostgreSQLBackend:
         self._check_open()
         with self._pool.connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT pg_advisory_xact_lock(1)")
+                lock_sql, lock_params = self._advisory_lock_sql()
+                cur.execute(lock_sql, lock_params)
 
                 chain_hash = record["chain_hash"]
                 previous_hash = record["previous_hash"]
@@ -130,14 +206,22 @@ class PostgreSQLBackend:
                         )
                         previous_hash = actual_prev
 
+                # Report what is about to be stored. The tip-repair branch
+                # above can replace both hashes, and the caller treats the
+                # values it gets back as the tamper-evident receipt for this
+                # record, so it has to see the stored pair rather than the
+                # pair it submitted.
+                record["chain_hash"] = chain_hash
+                record["previous_hash"] = previous_hash
+
                 cur.execute(
                     "INSERT INTO trail "
                     "(content_hash, source, source_name, timestamp, "
                     "provenance_json, provenance_status, missing_fields, "
                     "freshness_status, "
                     "chain_hash, previous_hash, config_hash, "
-                    "metadata_json, content_type, truncated) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "metadata_json, content_type, truncated, content_hash_version) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "RETURNING id",
                     (
                         record["content_hash"],
@@ -154,6 +238,7 @@ class PostgreSQLBackend:
                         record.get("metadata_json", "{}"),
                         record.get("content_type", "str"),
                         bool(record.get("truncated")),
+                        record.get("content_hash_version", 1),
                     ),
                 )
                 row = cur.fetchone()
@@ -251,9 +336,14 @@ class PostgreSQLBackend:
     def add_annotation(
         self, record_id: int, note: str, reviewer: str, timestamp: str
     ) -> int:
+        """Add an annotation, raising ValueError if the record does not exist."""
         self._check_open()
         with self._pool.connection() as conn:
             with conn.cursor() as cur:
+                cur.execute("SELECT id FROM trail WHERE id = %s", (record_id,))
+                if cur.fetchone() is None:
+                    raise ValueError(f"Record {record_id} does not exist")
+
                 cur.execute(
                     "INSERT INTO annotations (record_id, note, reviewer, timestamp) "
                     "VALUES (%s, %s, %s, %s) RETURNING id",
@@ -283,6 +373,25 @@ class PostgreSQLBackend:
             self._pool = None
 
 
+def _set_utc(conn: Any) -> None:
+    """Pin a pooled connection's session TimeZone to UTC.
+
+    The chain hash covers the timestamp string, and psycopg renders
+    timestamptz in the session TimeZone, so a read has to produce the same
+    string that was hashed whatever the server or database default is.
+
+    This runs as a pool ``configure`` callback rather than an ``options``
+    connection parameter, because ``options`` would replace any value the
+    caller already set in their DSN. A DSN carrying
+    ``options=-c statement_timeout=5000`` keeps it this way.
+
+    The commit is required: psycopg-pool discards any connection left inside
+    a transaction once ``configure`` returns.
+    """
+    conn.execute("SET TIME ZONE 'UTC'")
+    conn.commit()
+
+
 def _row_to_dict(cursor: Any, row: tuple[Any, ...]) -> dict[str, Any]:
     cols = [desc[0] for desc in cursor.description]
     d = dict(zip(cols, row, strict=True))
@@ -290,6 +399,12 @@ def _row_to_dict(cursor: Any, row: tuple[Any, ...]) -> dict[str, Any]:
         d["truncated"] = 1 if d["truncated"] else 0
     ts = d.get("timestamp")
     if ts is not None and not isinstance(ts, str):
+        # ContextTrail hashes datetime.now(timezone.utc).isoformat(), so the
+        # offset has to come back as +00:00. An aware value in any other zone
+        # is the same instant rendered differently, and hashing it would
+        # report an untouched trail as broken.
+        if ts.tzinfo is not None:
+            ts = ts.astimezone(timezone.utc)
         d["timestamp"] = ts.isoformat()
     for json_field in ("provenance_json", "metadata_json"):
         val = d.get(json_field)

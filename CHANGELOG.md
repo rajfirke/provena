@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   queries and CLI audit filters. In `provena audit`, `--to` includes the full
   UTC day (#240).
 - **`verify_chain()` takes a consistent snapshot under the trail lock.** Flush (when buffering) and `all_records()` now share `log()`'s lock, so a concurrent append cannot land between them. The hash walk still runs after the lock is released. `total_records` matches the snapshot captured for that call (#198)
+- **Future dates no longer produce false FRESH results.** Freshness checking now returns UNKNOWN when every provenance timestamp or detected date is more than one day later than the reference time; mixed content is evaluated from its past markers, with genuinely future markers ignored and reported in the verdict details.
 
 ## [1.3.1] - 2026-10-04
 
