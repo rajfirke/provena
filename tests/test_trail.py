@@ -587,6 +587,49 @@ class TestContextTrailErrorHandling:
         assert result == "result for test"
 
 
+class TestStrictSource:
+    def test_unknown_source_remains_permissive_by_default(self):
+        trail = ContextTrail(backend="memory")
+        try:
+            record = trail.log("test", source="retreiver:pinecone")
+            assert record is not None
+            assert record.entry.source == ContextSource.CUSTOM
+            assert record.entry.source_name == "pinecone"
+        finally:
+            trail.close()
+
+    def test_strict_source_rejects_unknown_source_independently_of_strict_mode(self):
+        trail = ContextTrail(backend="memory", strict_source=True)
+        try:
+            with pytest.raises(ValueError, match="Unknown context source"):
+                trail.log("test", source="retreiver:pinecone")
+
+            assert trail.summary()["total"] == 0
+            assert trail.error_count == 0
+        finally:
+            trail.close()
+
+    def test_strict_source_rejects_unknown_decorator_source(self):
+        trail = ContextTrail(backend="memory", strict_source=True)
+        try:
+            with pytest.raises(ValueError, match="Unknown context source"):
+                trail.track(source="retreiver:pinecone")
+        finally:
+            trail.close()
+
+    def test_disabled_track_skips_strict_source_validation(self, monkeypatch):
+        from provena import trail as trail_module
+
+        monkeypatch.setattr(trail_module, "_DISABLED", True)
+        trail = ContextTrail(backend="memory", strict_source=True)
+        try:
+            tracked = trail.track(source="retreiver:pinecone")(lambda: "result")
+            assert tracked() == "result"
+            assert trail.summary()["total"] == 0
+        finally:
+            trail.close()
+
+
 class TestContextTrailQuery:
     def test_query_all(self, memory_trail):
         memory_trail.log("a", source="retriever")
@@ -1161,6 +1204,7 @@ class TestContextTrailConfigHash:
             {"max_age_days": 30},
             {"required_fields": ["source_url"]},
             {"temporal_detection": False},
+            {"strict_source": True},
             {"policies": [freshness_check(status="STALE")]},
         ],
     )

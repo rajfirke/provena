@@ -42,6 +42,7 @@ class WriteBuffer:
         self._flush_interval = flush_interval
         self._lock = threading.RLock()
         self._stop = threading.Event()
+        self._last_stored_chain_hash: str | None = None
 
         self._thread = threading.Thread(
             target=self._flush_loop, daemon=True, name="provena-buffer"
@@ -80,6 +81,24 @@ class WriteBuffer:
         with self._lock:
             return self._backend.all_records() + list(self._buffer)
 
+    def settled_tip(self) -> str | None:
+        """Stored chain hash of the last flushed record, if nothing is pending.
+
+        A backend may repair the link it stores: PostgreSQL holds an advisory
+        lock and recomputes both hashes when the submitted ``previous_hash`` is
+        no longer the tip. The caller computed its hash before the flush, so it
+        has to learn the stored value or every later record chains off a hash
+        the table does not hold.
+
+        Returns ``None`` while records are still pending, because those are
+        appended before the caller's next record and it should go on extending
+        them rather than jumping back to the last stored row.
+        """
+        with self._lock:
+            if self._buffer:
+                return None
+            return self._last_stored_chain_hash
+
     def append(self, record: dict[str, Any]) -> None:
         """Append a record to the buffer. Triggers flush if buffer is full."""
         with self._lock:
@@ -109,7 +128,10 @@ class WriteBuffer:
 
     def _flush_locked(self) -> int:
         """Flush while holding self._lock. Returns count flushed."""
-        return _drain_buffer(self._buffer, self._backend)
+        count, last_stored = _drain_buffer(self._buffer, self._backend)
+        if last_stored is not None:
+            self._last_stored_chain_hash = last_stored
+        return count
 
     def _atexit_flush(self) -> None:
         self._stop.set()
@@ -150,14 +172,18 @@ def _sigterm_handler(signum: int, frame: Any) -> None:
         signal.raise_signal(signum)
 
 
-def _drain_buffer(buffer: deque[dict[str, Any]], backend: _Appendable) -> int:
+def _drain_buffer(
+    buffer: deque[dict[str, Any]], backend: _Appendable
+) -> tuple[int, str | None]:
     """Flush every record in buffer to backend, in insertion order.
 
     Stops and logs a warning on the first failure, leaving that record
     (and everything after it) in the buffer rather than dropping it.
-    Caller must hold the buffer's lock. Returns the count flushed.
+    Caller must hold the buffer's lock. Returns the count flushed and the
+    stored chain hash of the last record written, or ``None`` if none was.
     """
     count = 0
+    last_stored: str | None = None
     while buffer:
         record = buffer[0]
         try:
@@ -170,8 +196,15 @@ def _drain_buffer(buffer: deque[dict[str, Any]], backend: _Appendable) -> int:
             )
             break
         buffer.popleft()
+        # append() writes the stored pair back onto the record, so this is
+        # what the table holds, repaired or not. A record carrying no
+        # chain_hash leaves the last known tip alone: there is nothing to
+        # resync from, and the caller is not chaining these.
+        stored = record.get("chain_hash")
+        if stored is not None:
+            last_stored = stored
         count += 1
-    return count
+    return count, last_stored
 
 
 def _weak_flush(
