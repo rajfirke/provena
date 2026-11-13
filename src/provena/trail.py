@@ -698,10 +698,10 @@ class ContextTrail:
         """Verify the integrity of the entire hash chain.
 
         Flushes pending buffered records, then reads the backend, both while
-        holding the same lock as ``log()``. The hash walk runs on that
-        snapshot after the lock is released, so a concurrent ``log()`` cannot
-        append between the flush and the read. ``total_records`` is the size
-        of that snapshot.
+        holding the same lock as ``log()``. The backend captures the snapshot's
+        highest record ID before the lock is released, so a concurrent ``log()``
+        cannot append to the chain being checked. The hash walk streams that
+        bounded snapshot and counts its records.
 
         Recomputes every chain hash from the genesis hash forward and checks
         each against the stored value.
@@ -712,54 +712,69 @@ class ContextTrail:
         with self._lock:
             if self._buffer is not None:
                 self._buffer.flush()
-            records = self._backend.all_records()
-        if not records:
-            return ChainVerdict(intact=True, total_records=0, details="Empty trail")
+            records = self._backend.iter_records()
 
+        total_records = 0
+        broken_at: int | None = None
+        details = ""
         previous_hash = GENESIS_HASH
-        for record in records:
-            stored_previous = record.get("previous_hash")
-            if not isinstance(stored_previous, str) or not hmac.compare_digest(
-                previous_hash, stored_previous
-            ):
-                return ChainVerdict(
-                    intact=False,
-                    total_records=len(records),
-                    broken_at=record["id"],
-                    details=(
+        close = getattr(records, "close", None)
+        try:
+            for record in records:
+                total_records += 1
+                if broken_at is not None:
+                    continue
+
+                stored_previous = record.get("previous_hash")
+                if not isinstance(stored_previous, str) or not hmac.compare_digest(
+                    previous_hash, stored_previous
+                ):
+                    broken_at = record["id"]
+                    details = (
                         f"Chain broken at record {record['id']} — "
                         f"previous_hash is {stored_previous!r}"
                         if not isinstance(stored_previous, str)
                         else f"Chain broken at record {record['id']}"
-                    ),
-                )
+                    )
+                    continue
 
-            expected = self._hasher.compute_chain_hash(
-                previous_hash=previous_hash,
-                content_hash=record["content_hash"],
-                source=record["source"],
-                timestamp=record["timestamp"],
-            )
-            stored_hash = record.get("chain_hash")
-            if not isinstance(stored_hash, str) or not hmac.compare_digest(
-                expected, stored_hash
-            ):
-                return ChainVerdict(
-                    intact=False,
-                    total_records=len(records),
-                    broken_at=record["id"],
-                    details=(
+                expected = self._hasher.compute_chain_hash(
+                    previous_hash=previous_hash,
+                    content_hash=record["content_hash"],
+                    source=record["source"],
+                    timestamp=record["timestamp"],
+                )
+                stored_hash = record.get("chain_hash")
+                if not isinstance(stored_hash, str) or not hmac.compare_digest(
+                    expected, stored_hash
+                ):
+                    broken_at = record["id"]
+                    details = (
                         f"Chain broken at record {record['id']} — "
                         f"chain_hash is {stored_hash!r}"
                         if not isinstance(stored_hash, str)
                         else f"Chain broken at record {record['id']}"
-                    ),
-                )
-            previous_hash = stored_hash
+                    )
+                    continue
+                previous_hash = stored_hash
+        finally:
+            if callable(close):
+                close()
+
+        if not total_records:
+            return ChainVerdict(intact=True, total_records=0, details="Empty trail")
+
+        if broken_at is not None:
+            return ChainVerdict(
+                intact=False,
+                total_records=total_records,
+                broken_at=broken_at,
+                details=details,
+            )
 
         return ChainVerdict(
             intact=True,
-            total_records=len(records),
+            total_records=total_records,
             details="Chain intact",
         )
 

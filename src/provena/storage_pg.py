@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import Any
 
@@ -280,6 +281,30 @@ class PostgreSQLBackend:
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT * FROM trail ORDER BY id ASC")
             return [_row_to_dict(cur, r) for r in cur.fetchall()]
+
+    def iter_records(self) -> Iterator[dict[str, Any]]:
+        """Iterate the records present when called, ordered by ID."""
+        self._check_open()
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT MAX(id) FROM trail")
+            row = cur.fetchone()
+            max_id = int(row[0]) if row and row[0] is not None else 0
+
+        def iterate() -> Iterator[dict[str, Any]]:
+            if max_id == 0:
+                return
+            with (
+                self._pool.connection() as conn,
+                conn.cursor(name="provena_iter_records") as cur,
+            ):
+                cur.execute(
+                    "SELECT * FROM trail WHERE id <= %s ORDER BY id ASC",
+                    (max_id,),
+                )
+                for row in cur:
+                    yield _row_to_dict(cur, row)
+
+        return iterate()
 
     def query(
         self,
