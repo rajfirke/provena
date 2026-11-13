@@ -27,6 +27,7 @@ otel:
   service_name: provena
 
 # strict_mode: false
+# strict_source: false
 # max_content_bytes: 65536
 
 # Uncomment to enable policies:
