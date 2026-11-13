@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from collections.abc import Iterator
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -68,6 +69,10 @@ class StorageBackend(Protocol):
 
     def all_records(self) -> list[dict[str, Any]]:
         """Return all records ordered by ID."""
+        ...
+
+    def iter_records(self) -> Iterator[dict[str, Any]]:
+        """Iterate an ID-bounded snapshot of records ordered by ID."""
         ...
 
     def query(
@@ -221,6 +226,30 @@ class SQLiteBackend:
             rows = conn.execute("SELECT * FROM trail ORDER BY id ASC").fetchall()
             return [dict(r) for r in rows]
 
+    def iter_records(self) -> Iterator[dict[str, Any]]:
+        """Iterate the records present when called, ordered by ID."""
+        with self._lock:
+            conn = self._check_open()
+            row = conn.execute("SELECT MAX(id) FROM trail").fetchone()
+            max_id = int(row[0]) if row and row[0] is not None else 0
+            cursor = conn.execute(
+                "SELECT * FROM trail WHERE id <= ? ORDER BY id ASC", (max_id,)
+            )
+
+        def iterate() -> Iterator[dict[str, Any]]:
+            try:
+                while True:
+                    with self._lock:
+                        rows = cursor.fetchmany(256)
+                    if not rows:
+                        break
+                    yield from (dict(r) for r in rows)
+            finally:
+                with self._lock:
+                    cursor.close()
+
+        return iterate()
+
     def query(
         self,
         *,
@@ -354,6 +383,19 @@ class InMemoryBackend:
         """Return all records ordered by ID."""
         with self._lock:
             return [{**r} for r in self._records]
+
+    def iter_records(self) -> Iterator[dict[str, Any]]:
+        """Iterate the records present when called, ordered by ID."""
+        with self._lock:
+            record_count = len(self._records)
+
+        def iterate() -> Iterator[dict[str, Any]]:
+            for index in range(record_count):
+                with self._lock:
+                    record = {**self._records[index]}
+                yield record
+
+        return iterate()
 
     def query(
         self,

@@ -134,6 +134,12 @@ class TestPostgreSQLBackendCRUD:
         assert records[0]["content_hash"] == "a"
         assert records[2]["content_hash"] == "c"
 
+    def test_iter_records_uses_call_time_snapshot(self, pg_backend):
+        pg_backend.append(_make_record(content_hash="a"))
+        records = pg_backend.iter_records()
+        pg_backend.append(_make_record(content_hash="b"))
+        assert [record["content_hash"] for record in records] == ["a"]
+
     def test_truncated_normalized_to_int(self, pg_backend):
         pg_backend.append(_make_record(truncated=True))
         record = pg_backend.get(1)
