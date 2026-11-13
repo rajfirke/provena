@@ -154,6 +154,27 @@ trail = ContextTrail(backend="memory", strict_mode=True)
     context on `MISSING`/`STALE`, configure a `BLOCK` policy — `strict_mode`
     does not do that.
 
+### strict_source
+
+When `True`, `ContextTrail.log()` and `@trail.track()` raise `ValueError` for
+unknown source strings instead of recording them as `CUSTOM`. The default is
+permissive, preserving existing behavior. This setting is independent of
+`strict_mode` and is also supported as a top-level TOML/YAML config key.
+
+- **Type**: `bool`
+- **Default**: `False`
+
+```python
+trail = ContextTrail(backend="memory", strict_source=True)
+```
+
+```toml
+strict_source = true
+
+[storage]
+backend = "memory"
+```
+
 ### on_error
 
 Optional callback invoked when a governance error occurs. Receives the

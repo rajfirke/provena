@@ -315,6 +315,94 @@ class TestHandoffTracking:
         assert ("planner", 2) in record_keys
         assert ("executor", 1) in record_keys
 
+    def test_query_by_run_id_finds_records_beyond_the_first_page(self):
+        # query() used to fetch `limit` rows per trail and apply the run
+        # filter afterwards, so a run whose handoff endpoints were logged
+        # past that first page came back short or empty, with no warning.
+        # The endpoints here sit at record 150 of 200 in each trail, well
+        # outside the default limit of 100.
+        agg = TrailAggregator()
+        planner = ContextTrail(backend="memory")
+        executor = ContextTrail(backend="memory")
+        try:
+            for i in range(200):
+                planner.log(f"plan {i}", source="retriever")
+                executor.log(f"exec {i}", source="tool", source_name="api")
+            agg.add("planner", planner)
+            agg.add("executor", executor)
+            agg.record_handoff("planner", 150, "executor", 150, "late-run")
+
+            records = agg.query(run_id="late-run")
+
+            assert {(r["_trail"], r["id"]) for r in records} == {
+                ("planner", 150),
+                ("executor", 150),
+            }
+        finally:
+            agg.close()
+
+    def test_query_by_run_id_returns_only_that_run(self, populated_aggregator):
+        populated_aggregator.record_handoff("planner", 2, "executor", 1, "run-1")
+        populated_aggregator.record_handoff("executor", 2, "reviewer", 1, "run-2")
+
+        records = populated_aggregator.query(run_id="run-1")
+
+        assert {(r["_trail"], r["id"]) for r in records} == {
+            ("planner", 2),
+            ("executor", 1),
+        }
+
+    def test_query_by_run_id_leaves_trails_outside_the_run_unread(
+        self, populated_aggregator
+    ):
+        # Only a trail named by one of the run's handoffs can hold one of its
+        # records, so the rest should not be read at all.
+        class CountingTrail:
+            def __init__(self):
+                self.calls = 0
+
+            def query(self, **kwargs):
+                self.calls += 1
+                return []
+
+            def close(self):
+                pass
+
+        bystander = CountingTrail()
+        populated_aggregator.add("bystander", bystander)
+        populated_aggregator.record_handoff("planner", 2, "executor", 1, "run-1")
+
+        populated_aggregator.query(run_id="run-1")
+
+        assert bystander.calls == 0
+
+    def test_query_by_run_id_still_honors_the_other_filters(self, populated_aggregator):
+        # planner#2 is a tool record, executor#1 is as well, so filtering the
+        # run down to retriever records must exclude both.
+        populated_aggregator.record_handoff("planner", 2, "executor", 1, "run-1")
+
+        assert populated_aggregator.query(run_id="run-1", source="retriever") == []
+
+        populated_aggregator.record_handoff("planner", 1, "executor", 1, "run-2")
+        retriever_records = populated_aggregator.query(
+            run_id="run-2", source="retriever"
+        )
+        assert {(r["_trail"], r["id"]) for r in retriever_records} == {("planner", 1)}
+
+    def test_query_by_run_id_respects_limit(self):
+        agg = TrailAggregator()
+        planner = ContextTrail(backend="memory")
+        try:
+            for i in range(10):
+                planner.log(f"plan {i}", source="retriever")
+            agg.add("planner", planner)
+            for i in range(1, 6):
+                agg.record_handoff("planner", i, "planner", i + 1, "run-1")
+
+            assert len(agg.query(run_id="run-1", limit=3)) == 3
+        finally:
+            agg.close()
+
     def test_summary_includes_handoff_count(self, populated_aggregator):
         populated_aggregator.record_handoff("planner", 2, "executor", 1)
         s = populated_aggregator.summary()
