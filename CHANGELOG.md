@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **`ContextTrail` can reject unknown context sources with `strict_source=True`.** The default remains permissive, and the setting is also available as a top-level TOML/YAML/dict config value.
 - **`PostgreSQLBackend` and `ContextTrail` accept an optional `advisory_lock_key`.** The key is an int or an int pair, passed as a kwarg or through TOML/YAML/dict config. The default stays `1`, so rolling upgrades keep one lock. Use a distinct key only for a second chain in the same database, for example under another `search_path` (#248)
 
 ### Changed
@@ -19,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Fixed
 
 - **`TrailAggregator.query(run_id=...)` no longer misses a run's records.** The run filter matches handoff endpoints, but each trail was read only `limit` rows deep before that filter ran, so a run whose endpoints were logged past the first page came back short, or empty, with nothing to say so. Each participating trail is now read a page at a time before the run filter is applied, the way `detect_gaps()` consumes records, and trails named by none of the run's handoffs are not read at all. Handoff persistence stays out of scope: the handoff list is still in memory, as the multi-agent guide's limitations table says (#250)
+- **A buffered PostgreSQL trail no longer chains off a hash the table does not hold.** The chain hash is computed when `log()` is called and the record reaches the database at flush, so a write from another trail in between sends the flush through `append()`'s tip repair. The repaired pair was never read back, leaving the in-memory tip on the locally computed hash, so a single interleaved write left every later record chaining off a hash that was never stored, and being repaired in turn. A flush now reports the stored tip and the trail picks it up once the buffer drains. `chain_hash` and `previous_hash` on a receipt returned before that flush stay provisional, which `log()` now documents alongside the existing `id=-1` note (#242)
 - **PostgreSQL no longer reports an untouched trail as broken outside UTC.** The chain hash covers the timestamp string, and psycopg renders `timestamptz` in the session `TimeZone`, so on a database whose zone was not UTC the readback offset differed from the `+00:00` form that was hashed and `verify_chain()` reported a break nobody caused. Pooled connections are now pinned to UTC, and `_row_to_dict()` converts an aware timestamp to UTC before `isoformat()`. CI passed previously because its Postgres service runs UTC (#230)
 - **PostgreSQL tip repair now reports the hashes it stored.** `PostgreSQLBackend.append()` takes an advisory lock and, when the submitted `previous_hash` is no longer the tip, recomputes `chain_hash` and `previous_hash` and inserts the repaired pair. Those values stayed local to `append()`, so after two writers raced the `TrailRecord` returned by `log()` described a link that was not in the row, and the writer that lost the race kept submitting the stale tip. `append()` now writes the stored pair back onto the record, and `_log_internal` reads it back for both `_previous_hash` and the returned record (#231)
 - PostgreSQL annotations reject missing record IDs with the same `ValueError` as the SQLite and in-memory backends, without inserting an annotation (#229).
@@ -27,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   queries and CLI audit filters. In `provena audit`, `--to` includes the full
   UTC day (#240).
 - **`verify_chain()` takes a consistent snapshot under the trail lock.** Flush (when buffering) and `all_records()` now share `log()`'s lock, so a concurrent append cannot land between them. The hash walk still runs after the lock is released. `total_records` matches the snapshot captured for that call (#198)
+- **Future dates no longer produce false FRESH results.** Freshness checking now returns UNKNOWN when every provenance timestamp or detected date is more than one day later than the reference time; mixed content is evaluated from its past markers, with genuinely future markers ignored and reported in the verdict details.
 
 ## [1.3.1] - 2026-10-04
 

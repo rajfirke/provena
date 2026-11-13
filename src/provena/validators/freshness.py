@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from provena.models import ContextEntry, FreshnessResult
 
@@ -37,6 +38,11 @@ _MONTH_MAP: dict[str, int] = {
 _MONTH_NAMES = "|".join(_MONTH_MAP.keys())
 
 _QUARTER_START = {1: 1, 2: 4, 3: 7, 4: 10}
+
+# Dates no more than one day ahead of the reference time are treated as clock
+# skew rather than genuinely future-dated. Only dates beyond this window are
+# considered future-dated and return UNKNOWN.
+_FUTURE_TOLERANCE = timedelta(days=1)
 
 
 class _TemporalPatterns:
@@ -124,6 +130,9 @@ class FreshnessChecker:
 
         Returns:
             A FreshnessResult with status FRESH, STALE, or UNKNOWN.
+            A provenance date or detected temporal marker that is more than
+            one day later than the reference time returns UNKNOWN. Dates
+            within the one-day tolerance are treated as current.
         """
         reference = now or datetime.now(timezone.utc)
         # Normalize a caller-supplied naive `now` to UTC-aware, matching how
@@ -159,7 +168,21 @@ class FreshnessChecker:
         if created.tzinfo is None:
             created = created.replace(tzinfo=timezone.utc)
 
+        # Dates more than one day ahead of the reference are genuinely
+        # future-dated and cannot verify freshness. Dates within the one-day
+        # tolerance (clock skew) are treated as current.
+        if created > now + _FUTURE_TOLERANCE:
+            return FreshnessResult(
+                status="UNKNOWN",
+                details=f"Provenance created_at {created.date().isoformat()} is in the future",
+                detected_date=created,
+            )
+
         age = now - created
+        if age < timedelta(0):
+            # Within-tolerance future date: clamp to zero so it is evaluated
+            # as current instead of letting a negative age skew the result.
+            age = timedelta(0)
         if age <= self._threshold:
             return FreshnessResult(
                 status="FRESH",
@@ -178,22 +201,56 @@ class FreshnessChecker:
         if not dates:
             return None
 
-        newest = max(dates)
-        if newest.tzinfo is None:
-            newest = newest.replace(tzinfo=timezone.utc)
+        future_cutoff = now + _FUTURE_TOLERANCE
+        # Genuinely future markers (beyond the one-day tolerance) are ignored
+        # so they cannot hide the last real update date. Usable markers are
+        # past or current (within the tolerance window).
+        genuine_future = [d for d in dates if d > future_cutoff]
+        usable = [d for d in dates if d <= future_cutoff]
 
-        age = now - newest
-        if age <= self._threshold:
+        if not usable:
+            # Every detected marker is genuinely future-dated.
+            newest = max(dates)
             return FreshnessResult(
-                status="FRESH",
-                details=f"Temporal marker detected: {newest.date().isoformat()} ({age.days} days old)",
+                status="UNKNOWN",
+                details=(
+                    "All detected temporal markers are genuinely future-dated; "
+                    f"newest marker {newest.date().isoformat()} is in the future, "
+                    "so freshness cannot be verified"
+                ),
                 detected_date=newest,
             )
 
+        # Preserve the existing newest-wins date-selection policy, applied to
+        # the usable markers only. Genuinely future markers do not take part in
+        # the selection, so an old update date is not masked by a projection.
+        selected = max(usable)
+        age = now - selected
+        if age < timedelta(0):
+            # Within-tolerance future date treated as current.
+            age = timedelta(0)
+
+        status: Literal["FRESH", "STALE", "UNKNOWN"]
+        if age <= self._threshold:
+            base = f"Temporal marker detected: {selected.date().isoformat()} ({age.days} days old)"
+            status = "FRESH"
+        else:
+            base = (
+                f"Temporal marker detected: {selected.date().isoformat()} "
+                f"({age.days} days old, threshold: {self._max_age_days} days)"
+            )
+            status = "STALE"
+
+        if genuine_future:
+            ignored = ", ".join(d.date().isoformat() for d in sorted(genuine_future))
+            details = f"Ignored future-dated marker(s): {ignored}. {base}"
+        else:
+            details = base
+
         return FreshnessResult(
-            status="STALE",
-            details=f"Temporal marker detected: {newest.date().isoformat()} ({age.days} days old, threshold: {self._max_age_days} days)",
-            detected_date=newest,
+            status=status,
+            details=details,
+            detected_date=selected,
         )
 
     def _extract_dates(self, content: str) -> list[datetime]:
