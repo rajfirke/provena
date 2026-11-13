@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
-- **MCP `check_freshness`, `check_provenance`, and `list_violations` now inspect the newest records.** These tools pass `order="desc"` to `ContextTrail.query` so `limit` selects the most recent matching rows instead of the oldest ones. A public `order` argument (`"asc"` | `"desc"`, default `"asc"`) was added to `query()` on storage backends and `ContextTrail` for this. (#241, #244)
+- **MCP `check_freshness`, `check_provenance`, and `list_violations` now inspect the newest records.** These tools pass `order="desc"` to `ContextTrail.query` so `limit` selects the most recent matching rows instead of the oldest ones. A public `order` argument (`"asc"` | `"desc"`, default `"asc"`) was added to `query()` on storage backends and `ContextTrail` for this (#241)
 - **PostgreSQL no longer reports an untouched trail as broken outside UTC.** The chain hash covers the timestamp string, and psycopg renders `timestamptz` in the session `TimeZone`, so on a database whose zone was not UTC the readback offset differed from the `+00:00` form that was hashed and `verify_chain()` reported a break nobody caused. Pooled connections are now pinned to UTC, and `_row_to_dict()` converts an aware timestamp to UTC before `isoformat()`. CI passed previously because its Postgres service runs UTC (#230)
 - **PostgreSQL tip repair now reports the hashes it stored.** `PostgreSQLBackend.append()` takes an advisory lock and, when the submitted `previous_hash` is no longer the tip, recomputes `chain_hash` and `previous_hash` and inserts the repaired pair. Those values stayed local to `append()`, so after two writers raced the `TrailRecord` returned by `log()` described a link that was not in the row, and the writer that lost the race kept submitting the stale tip. `append()` now writes the stored pair back onto the record, and `_log_internal` reads it back for both `_previous_hash` and the returned record (#231)
 - PostgreSQL annotations reject missing record IDs with the same `ValueError` as the SQLite and in-memory backends, without inserting an annotation (#229).
@@ -93,7 +93,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   already on `provena audit`, so a multi-source pipeline can be inspected one
   source at a time. Counts are paged rather than taken from a single
   `query()` call, so they stay accurate past the default 100-row cap (#75)
-- **`provena stats` command** â prints a one-line governance status summary for
+- **`provena stats` command** — prints a one-line governance status summary for
   CI/CD pipelines and shell scripts, showing record count, provenance/freshness
   breakdowns, chain integrity, and signing status in a parseable format (#76)
 
@@ -107,7 +107,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   handler instead of replacing the previous buffer's handler whenever another
   buffered trail is created (#112)
 - **`verify_chain()` now flushes pending buffered records before verification** so its verdict always covers the complete trail instead of silently checking only the persisted prefix (#142)
-- **`ContextTrail.close()` now closes the backend even if flushing the buffer fails** â the two calls are wrapped in `try/finally`, so a disk-full or I/O error during the final buffer flush no longer leaks the SQLite connection or skips the WAL checkpoint (#144)
+- **`ContextTrail.close()` now closes the backend even if flushing the buffer fails** — the two calls are wrapped in `try/finally`, so a disk-full or I/O error during the final buffer flush no longer leaks the SQLite connection or skips the WAL checkpoint (#144)
 - **`annotate()` rejects non-positive record IDs with a clear error.** In
   buffered mode `log()` returns `TrailRecord(id=-1)` until the record is
   flushed, and passing that placeholder to `annotate()` previously surfaced a
@@ -115,7 +115,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   PostgreSQL, and a differently worded `ValueError` in memory, none of which
   mentioned buffering. All backends now raise the same `ValueError` naming the
   cause and pointing at `flush()` (#143)
-- **`RetentionEngine` no longer silently caps at 10,000 expired records per run** â `find_expired()` now pages through the full result set in batches, so `preview()` and `execute()` act on every expired record instead of only the first 10k (#102)
+- **`RetentionEngine` no longer silently caps at 10,000 expired records per run** — `find_expired()` now pages through the full result set in batches, so `preview()` and `execute()` act on every expired record instead of only the first 10k (#102)
 - **`record_count`, `summary()`, and `export()` now include unflushed buffered records** in buffered mode. Previously all three read only from the backend, so `record_count` was always 0 until the next flush, `summary()` reported stale aggregates, and `export()` silently omitted pending writes. `record_count` and `summary()` now merge `WriteBuffer.pending_records` into the backend snapshot without flushing; `export()` flushes explicitly so the backend view is always complete (#150)
 - **`@trail.track` now extracts provenance per document** when the decorated
   function returns a list. `_extract_provenance` ran on the list itself, which
@@ -124,11 +124,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   carried its own `source` and `created_at`. A batch containing a stale
   document now flags it `STALE` instead of hiding it behind a batch-wide
   `UNKNOWN` (#149)
-- **`provena mcp serve` now closes the trail on exit** â the server call is wrapped in `try/finally`, so the SQLite handle/WAL is checkpointed and the final buffer flush runs even if `configure()`/`create_server()` raise or `server.run()` returns (#148)
+- **`provena mcp serve` now closes the trail on exit** — the server call is wrapped in `try/finally`, so the SQLite handle/WAL is checkpointed and the final buffer flush runs even if `configure()`/`create_server()` raise or `server.run()` returns (#148)
 - **`verify_chain()` returns `ChainVerdict(intact=False)` for a `None`/malformed `chain_hash`** instead of raising `TypeError` out of `hmac.compare_digest`, so corrupted or hand-edited records are reported as broken links rather than crashing the audit path (#146)
 - **`InMemoryBackend.get()` and `get_last()` now hold the backend lock** when reading `_records`, matching every other method on the backend and closing a TOCTOU race that could raise `IndexError` under concurrent `append()` (#145)
 - **`FreshnessChecker.check()` accepts a naive `now` override**, normalizing it to UTC-aware like `created_at`, instead of raising `TypeError: can't subtract offset-naive and offset-aware datetimes` (#147)
-- **`provena[all]` now installs what the README says it does** â the extra
+- **`provena[all]` now installs what the README says it does** — the extra
   resolved to only `yaml,cli,otel`, silently omitting the `postgres`, `mcp` and
   `pdf` extras the README already documented it as including. Framework
   adapters remain deliberately excluded (#71)
@@ -152,12 +152,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
-- **`TrailRecord.config_hash` never populated** â `ContextTrail` now computes a
+- **`TrailRecord.config_hash` never populated** — `ContextTrail` now computes a
   stable hash of its governance configuration (required fields, freshness
   settings, active policies) and records it on every entry, so a reviewer can
   tell whether governance settings changed mid-trail. Existing chains are
-  unaffected â `config_hash` is not part of the hash chain (#103)
-- **`migrate --batch-size` validation** â non-positive batch sizes now fail with
+  unaffected — `config_hash` is not part of the hash chain (#103)
+- **`migrate --batch-size` validation** — non-positive batch sizes now fail with
   a clear CLI error instead of crashing (`0`) or silently migrating zero records
   while reporting `PASS` (`-1`) (#106)
 - **`TrailAggregator.query(trail_label=...)`** now returns an empty result for
@@ -172,12 +172,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   instead of omitting it (#117)
 - **`FreshnessChecker`**'s temporal regex now correctly matches the `"in <year>"`
   pattern it claims to support (#100)
-- **Malformed policy enforcement values** â invalid `enforcement` settings now
+- **Malformed policy enforcement values** — invalid `enforcement` settings now
   log a warning and skip only the affected policy entry instead of crashing
   `PolicyEngine.from_config()` (#109)
 - CLI commands now report missing or invalid `--config` files without a
   traceback (#108)
-- LICENSE file replaced with the canonical Apache 2.0 text â the previous
+- LICENSE file replaced with the canonical Apache 2.0 text — the previous
   reformatted copy wasn't detected by GitHub's license scanner
 
 ### Testing
@@ -191,19 +191,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
-- **PDF report generation** â `generate_report(..., format="pdf")` now returns actual
+- **PDF report generation** — `generate_report(..., format="pdf")` now returns actual
   PDF bytes instead of silently falling back to plain text (#92)
-- **`export()` silent format fallback** â unsupported export formats now raise
+- **`export()` silent format fallback** — unsupported export formats now raise
   `ValueError` instead of silently returning JSON (#81)
-- **`PolicyEngine.from_config()` silent typos** â unrecognized policy check names
+- **`PolicyEngine.from_config()` silent typos** — unrecognized policy check names
   now log a warning instead of being silently skipped, preventing governance
   gaps from unnoticed misconfiguration (#94)
-- **`generate_report()` silent format fallback** â unsupported report formats
+- **`generate_report()` silent format fallback** — unsupported report formats
   now raise `ValueError` instead of silently returning JSON (#89)
-- **CLI `--config` option honored** â all CLI subcommands (`audit`, `verify`,
+- **CLI `--config` option honored** — all CLI subcommands (`audit`, `verify`,
   `report`, `retain`, `summary`) now correctly use the `--config` file when
   provided, instead of silently ignoring it (#43)
-- **`RetentionResult` message accuracy** â details message now says "Purged"
+- **`RetentionResult` message accuracy** — details message now says "Purged"
   instead of "Retained" for deleted records (#88)
 - CI now installs the `pdf` extra so PDF generation is actually exercised
 
@@ -258,13 +258,13 @@ Semantic versioning commitment: the 1.x API surface is stable.
 ## [0.15.0] - 2026-07-20
 
 ### Fixed
-- **Retention preserves chain integrity** â uses tombstones instead of record
+- **Retention preserves chain integrity** — uses tombstones instead of record
   deletion, keeping verify_chain() intact per EU AI Act Art. 12 (#40)
-- **Buffer flush no longer loses records** â peek-before-pop pattern prevents
+- **Buffer flush no longer loses records** — peek-before-pop pattern prevents
   data loss when backend.append() fails (#41)
-- **FreshnessChecker uses most recent date** â max(dates) instead of min(dates)
+- **FreshnessChecker uses most recent date** — max(dates) instead of min(dates)
   prevents false STALE on content with historical references (#49)
-- **Compliance report score aligned with Art. 10** â provenance check now
+- **Compliance report score aligned with Art. 10** — provenance check now
   requires 100% valid, matching the article-level assessment (#52)
 - Retention engine now supports PostgreSQL backend via _pool connection (#44)
 
@@ -286,7 +286,7 @@ Semantic versioning commitment: the 1.x API surface is stable.
 
 ### Added
 - **Multi-trail aggregation**: `TrailAggregator` for governing multi-agent
-  systems â unified summary, query, and chain verification across agents (#28)
+  systems — unified summary, query, and chain verification across agents (#28)
 - **Handoff tracking**: `record_handoff()` links records across trails when
   context flows agent-to-agent, with `run_id` grouping for workflow audit
 - **Cross-agent timeline**: `timeline()` provides merged chronological view
@@ -315,11 +315,11 @@ Semantic versioning commitment: the 1.x API surface is stable.
 ### Added
 - **MCP server**: Governance-aware agents via `provena mcp serve` (`provena[mcp]`)
 - 5 MCP tools: `check_freshness`, `verify_chain`, `list_violations`,
-  `get_summary`, `check_provenance` â all return structured JSON with
+  `get_summary`, `check_provenance` — all return structured JSON with
   `recommendation` field
 - 3 MCP resources: `provena://health`, `provena://summary`,
   `provena://chain/status`
-- 1 MCP prompt: `governance_check` â standard agent self-audit prompt
+- 1 MCP prompt: `governance_check` — standard agent self-audit prompt
 - `configure(trail)` API for binding a ContextTrail to the MCP server
 - CLI: `provena mcp serve --db audit.db` starts the MCP server
 
@@ -360,7 +360,7 @@ Semantic versioning commitment: the 1.x API surface is stable.
 
 ### Added
 - **Policy engine**: `ContextTrail(policies=[...])` enforces governance rules at
-  three levels â `LOG`, `WARN`, `BLOCK` â on every logged entry (#26)
+  three levels — `LOG`, `WARN`, `BLOCK` — on every logged entry (#26)
 - `PolicyViolation` exception raised on BLOCK (propagates even in non-strict mode)
 - Blocked records are still persisted to the audit trail (EU AI Act Art. 12 compliance)
 - Built-in policy checks: `freshness_check()`, `provenance_check()`,
@@ -390,10 +390,10 @@ Semantic versioning commitment: the 1.x API surface is stable.
 - `ContextTrail.query()` filters for exact provenance and freshness status values
 - **Annotation retrieval API**: `ContextTrail.get_annotations(record_id)` and
   `StorageBackend.get_annotations(record_id)` (implemented in `SQLiteBackend`
-  and `InMemoryBackend`) â read annotations for a record in insertion order,
+  and `InMemoryBackend`) — read annotations for a record in insertion order,
   returning `[]` for non-existent or unannotated records (#27)
 - New `"json_with_annotations"` export format including annotations grouped by
-  `record_id` (backward compatible â existing `"json"` format unchanged) (#27)
+  `record_id` (backward compatible — existing `"json"` format unchanged) (#27)
 
 ## [0.5.0] - 2026-07-15
 

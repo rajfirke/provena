@@ -516,6 +516,7 @@ def test_check_freshness_and_provenance_use_newest_records():
     finally:
         trail.close()
 
+
 @pytest.mark.skipif(not _has_fastmcp, reason="fastmcp not installed")
 def test_list_violations_uses_newest_records():
     """list_violations must also inspect the most recent records (issue #241)."""
@@ -544,6 +545,8 @@ def test_list_violations_uses_newest_records():
     try:
         result = _call_tool(create_server(), "list_violations", {"limit": 5})
         assert result["total_violations"] >= 1
-        assert any(v.get("source_name") == "stale-newest" for v in result.get("violations", []))
+        assert any(
+            v.get("source_name") == "stale-newest" for v in result.get("violations", [])
+        )
     finally:
         trail.close()
