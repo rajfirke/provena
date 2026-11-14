@@ -5,20 +5,38 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import pytest
 
 from provena import ContextTrail
-from provena.retention import EU_AI_ACT_MINIMUM_DAYS, RetentionEngine
+from provena.retention import EU_AI_ACT_MINIMUM_DAYS, RetentionEngine, _is_tombstone
 
-_pg_conninfo = os.environ.get("PROVENA_TEST_PG_URL", "")
-try:
-    import psycopg  # noqa: F401
 
-    _pg_importable = True
-except ImportError:
-    _pg_importable = False
+@pytest.fixture
+def pg_test_url() -> Generator[str, None, None]:
+    conninfo = os.environ.get("PROVENA_TEST_PG_URL", "")
+    if not conninfo:
+        pytest.skip("PostgreSQL not available (set PROVENA_TEST_PG_URL)")
+    psycopg = pytest.importorskip("psycopg")
+    from psycopg import sql
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    schema = f"retention_test_{uuid4().hex}"
+    with psycopg.connect(conninfo, autocommit=True) as connection:
+        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+    try:
+        options = conninfo_to_dict(conninfo).get("options", "")
+        yield make_conninfo(
+            conninfo, options=f"{options} -c search_path={schema}".strip()
+        )
+    finally:
+        with psycopg.connect(conninfo, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema))
+            )
 
 
 def _capture_retention_log_content(trail, monkeypatch):
@@ -443,19 +461,9 @@ class TestRetentionExecution:
         finally:
             trail.close()
 
-    @pytest.mark.skipif(
-        not (_pg_importable and _pg_conninfo),
-        reason="PostgreSQL not available (set PROVENA_TEST_PG_URL and install psycopg)",
-    )
-    def test_retention_rerun_postgres(self, monkeypatch):
+    def test_retention_rerun_postgres(self, pg_test_url, monkeypatch):
         """PostgreSQL test: rerun retention does not duplicate purge events."""
-        from provena.storage_pg import PostgreSQLBackend
-
-        backend = PostgreSQLBackend(conninfo=_pg_conninfo, pool_size=2)
-        with backend._pool.connection() as conn:
-            conn.execute("TRUNCATE trail, annotations RESTART IDENTITY CASCADE")
-
-        trail = ContextTrail(storage_path=_pg_conninfo)
+        trail = ContextTrail(storage_path=pg_test_url)
         captured = _capture_retention_log_content(trail, monkeypatch)
         now = datetime.now(timezone.utc)
 
@@ -463,6 +471,7 @@ class TestRetentionExecution:
             for i in range(3):
                 trail.log(f"old pg record {i}", source="retriever")
 
+            backend = trail._backend
             with backend._pool.connection() as conn, conn.cursor() as cur:
                 cur.execute(
                     "UPDATE trail SET timestamp = %s WHERE id IN (1, 2, 3)",
@@ -482,7 +491,6 @@ class TestRetentionExecution:
             assert len(captured) == 1
         finally:
             trail.close()
-            backend.close()
 
 
 class TestRetentionCLI:
@@ -573,3 +581,61 @@ class TestRetentionPagination:
             assert len(captured) == 1
         finally:
             trail.close()
+
+
+class TestIsTombstone:
+    """Focused tests for _is_tombstone boolean semantics and edge cases."""
+
+    def test_dict_boolean_true(self):
+        assert _is_tombstone({"metadata_json": {"_tombstone": True}}) is True
+
+    def test_dict_boolean_false(self):
+        assert _is_tombstone({"metadata_json": {"_tombstone": False}}) is False
+
+    def test_dict_string_false(self):
+        assert _is_tombstone({"metadata_json": {"_tombstone": "false"}}) is False
+
+    def test_dict_integer_one(self):
+        assert _is_tombstone({"metadata_json": {"_tombstone": 1}}) is False
+
+    def test_json_boolean_true(self):
+        assert (
+            _is_tombstone({"metadata_json": json.dumps({"_tombstone": True})}) is True
+        )
+
+    def test_json_boolean_false(self):
+        assert (
+            _is_tombstone({"metadata_json": json.dumps({"_tombstone": False})}) is False
+        )
+
+    def test_json_string_false(self):
+        assert (
+            _is_tombstone({"metadata_json": json.dumps({"_tombstone": "false"})})
+            is False
+        )
+
+    def test_json_integer_one(self):
+        assert _is_tombstone({"metadata_json": json.dumps({"_tombstone": 1})}) is False
+
+    def test_malformed_json(self):
+        assert _is_tombstone({"metadata_json": "{not-valid-json"}) is False
+        assert (
+            _is_tombstone({"metadata_json": "plain string with _tombstone in it"})
+            is False
+        )
+
+    def test_missing_or_empty_metadata(self):
+        assert _is_tombstone({}) is False
+        assert _is_tombstone({"metadata_json": None}) is False
+        assert _is_tombstone({"metadata_json": ""}) is False
+        assert _is_tombstone({"metadata_json": "{}"}) is False
+
+    def test_non_dict_json(self):
+        assert (
+            _is_tombstone({"metadata_json": json.dumps(["_tombstone", True])}) is False
+        )
+
+    def test_source_name_retained_always_true(self):
+        assert _is_tombstone({"source_name": "retained"}) is True
+        assert _is_tombstone({"source_name": "retained", "metadata_json": {}}) is True
+        assert _is_tombstone({"source_name": "retained", "metadata_json": None}) is True

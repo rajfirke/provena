@@ -21,7 +21,7 @@ def _is_tombstone(record: dict[str, Any]) -> bool:
     meta = record.get("metadata_json")
     if meta:
         if isinstance(meta, dict):
-            return bool(meta.get("_tombstone"))
+            return meta.get("_tombstone") is True
         if isinstance(meta, str) and "_tombstone" in meta:
             try:
                 parsed = json.loads(meta)
