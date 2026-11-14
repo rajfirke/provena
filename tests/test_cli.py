@@ -688,6 +688,25 @@ class TestCLIRetain:
         finally:
             os.unlink(db_path)
 
+    def test_retain_execute_rerun_reports_no_records_exceed(self):
+        db_path = _create_trail_db(1)
+        self._age_record(db_path, 1, days=400)
+        try:
+            runner = CliRunner()
+            result1 = runner.invoke(
+                cli, ["--db", db_path, "retain", "--max-age", "180"]
+            )
+            assert result1.exit_code == 0
+            assert "DONE" in result1.output
+
+            result2 = runner.invoke(
+                cli, ["--db", db_path, "retain", "--max-age", "180"]
+            )
+            assert result2.exit_code == 0
+            assert "No records exceed the retention period." in result2.output
+        finally:
+            os.unlink(db_path)
+
     def test_retain_below_eu_minimum(self):
         db_path = _create_trail_db(1)
         try:

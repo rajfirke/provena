@@ -14,6 +14,24 @@ _logger = logging.getLogger("provena.retention")
 EU_AI_ACT_MINIMUM_DAYS = 180
 
 
+def _is_tombstone(record: dict[str, Any]) -> bool:
+    """Return True if the record has already been tombstoned by retention."""
+    if record.get("source_name") == "retained":
+        return True
+    meta = record.get("metadata_json")
+    if meta:
+        if isinstance(meta, dict):
+            return bool(meta.get("_tombstone"))
+        if isinstance(meta, str) and "_tombstone" in meta:
+            try:
+                parsed = json.loads(meta)
+                if isinstance(parsed, dict) and parsed.get("_tombstone") is True:
+                    return True
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return False
+
+
 @dataclass(frozen=True, slots=True)
 class RetentionResult:
     """Outcome of a retention policy execution.
@@ -75,6 +93,9 @@ class RetentionEngine:
     def find_expired(self, now: datetime | None = None) -> list[dict[str, Any]]:
         """Find records older than the retention period.
 
+        Excludes records that have already been tombstoned by a previous
+        retention run.
+
         Args:
             now: Override the current time for testing.
 
@@ -90,7 +111,9 @@ class RetentionEngine:
             page: list[dict[str, Any]] = self._trail.query(
                 end=cutoff, limit=batch, offset=offset
             )
-            expired.extend(page)
+            for record in page:
+                if not _is_tombstone(record):
+                    expired.append(record)
             if len(page) < batch:
                 break
             offset += batch
@@ -221,7 +244,9 @@ class RetentionEngine:
     def _delete_expired(self, expired: list[dict[str, Any]]) -> list[int]:
         backend = self._trail._backend
         expired_ids = [
-            r["id"] for r in expired if isinstance(r.get("id"), int) and r["id"] > 0
+            r["id"]
+            for r in expired
+            if isinstance(r.get("id"), int) and r["id"] > 0 and not _is_tombstone(r)
         ]
 
         if not expired_ids:
@@ -236,7 +261,7 @@ class RetentionEngine:
                     cursor = backend._conn.execute(
                         "UPDATE trail SET provenance_json = NULL, "
                         "missing_fields = '', metadata_json = ?, "
-                        "source_name = 'retained' WHERE id = ?",
+                        "source_name = 'retained' WHERE id = ? AND source_name != 'retained'",
                         (tombstone_meta, rid),
                     )
                     if cursor.rowcount:
@@ -255,7 +280,7 @@ class RetentionEngine:
             deleted_ids = []
             with backend._lock:
                 for r in backend._records:
-                    if r.get("id") in id_set:
+                    if r.get("id") in id_set and not _is_tombstone(r):
                         r["provenance_json"] = None
                         r["missing_fields"] = ""
                         r["metadata_json"] = tombstone_meta
@@ -277,7 +302,7 @@ class RetentionEngine:
                         cur.execute(
                             "UPDATE trail SET provenance_json = NULL, "
                             "missing_fields = '', metadata_json = %s, "
-                            "source_name = 'retained' WHERE id = %s",
+                            "source_name = 'retained' WHERE id = %s AND source_name != 'retained'",
                             (tombstone_meta, rid),
                         )
                         if cur.rowcount:
