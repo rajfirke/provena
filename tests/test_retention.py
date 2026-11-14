@@ -4,12 +4,39 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import pytest
 
 from provena import ContextTrail
-from provena.retention import EU_AI_ACT_MINIMUM_DAYS, RetentionEngine
+from provena.retention import EU_AI_ACT_MINIMUM_DAYS, RetentionEngine, _is_tombstone
+
+
+@pytest.fixture
+def pg_test_url() -> Generator[str, None, None]:
+    conninfo = os.environ.get("PROVENA_TEST_PG_URL", "")
+    if not conninfo:
+        pytest.skip("PostgreSQL not available (set PROVENA_TEST_PG_URL)")
+    psycopg = pytest.importorskip("psycopg")
+    from psycopg import sql
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    schema = f"retention_test_{uuid4().hex}"
+    with psycopg.connect(conninfo, autocommit=True) as connection:
+        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+    try:
+        options = conninfo_to_dict(conninfo).get("options", "")
+        yield make_conninfo(
+            conninfo, options=f"{options} -c search_path={schema}".strip()
+        )
+    finally:
+        with psycopg.connect(conninfo, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema))
+            )
 
 
 def _capture_retention_log_content(trail, monkeypatch):
@@ -296,6 +323,175 @@ class TestRetentionExecution:
         finally:
             trail.close()
 
+    def test_retention_rerun_reports_zero_and_no_duplicate_purge_log(
+        self, trail_with_old_records, monkeypatch
+    ):
+        """Regression test for #268: retention re-runs must not re-report tombstones."""
+        captured = _capture_retention_log_content(trail_with_old_records, monkeypatch)
+        engine = RetentionEngine(trail_with_old_records, retention_days=180)
+
+        # Run 1: purges 5 expired records
+        res1 = engine.execute()
+        assert res1.deleted == 5
+        assert len(captured) == 1
+        assert trail_with_old_records.summary()["total"] == 9
+
+        # Preview reflects that no records remain to be deleted
+        preview = engine.preview()
+        assert preview["would_delete"] == 0
+        assert preview["provenance"] == {}
+        assert preview["freshness"] == {}
+
+        # Run 2: must report 0 deleted and log no duplicate purge event
+        res2 = engine.execute()
+        assert res2.deleted == 0
+        assert res2.archived == 0
+        assert "No records" in res2.details
+        assert len(captured) == 1  # No second purge event logged
+        assert trail_with_old_records.summary()["total"] == 9  # Total unchanged
+
+    def test_retention_rerun_sqlite(self, tmp_path, monkeypatch):
+        """Regression test for #268 on SQLite: second run reports deleted=0."""
+        db_path = str(tmp_path / "sqlite_retention.db")
+        trail = ContextTrail(storage_path=db_path)
+        now = datetime.now(timezone.utc)
+        captured = _capture_retention_log_content(trail, monkeypatch)
+
+        try:
+            for i in range(5):
+                trail.log(f"old record {i}", source="retriever")
+            for i in range(3):
+                trail.log(f"recent record {i}", source="tool")
+
+            # Age the first 5 records in SQLite
+            for rid in range(1, 6):
+                trail._backend._conn.execute(
+                    "UPDATE trail SET timestamp = ? WHERE id = ?",
+                    ((now - timedelta(days=400)).isoformat(), rid),
+                )
+            trail._backend._conn.commit()
+
+            engine = RetentionEngine(trail, retention_days=180)
+            res1 = engine.execute()
+            assert res1.deleted == 5
+            assert len(captured) == 1
+
+            # Preview on SQLite
+            assert engine.preview()["would_delete"] == 0
+
+            # Second run on SQLite
+            res2 = engine.execute()
+            assert res2.deleted == 0
+            assert res2.archived == 0
+            assert len(captured) == 1
+
+            records = trail._backend.all_records()
+            retention_logs = [
+                r for r in records if r.get("source_name") == "provena:retention"
+            ]
+            assert len(retention_logs) == 1
+        finally:
+            trail.close()
+
+    def test_retention_rerun_incremental_expiry(self, monkeypatch):
+        """Verifies that subsequent runs purge only newly-expired records."""
+        trail = ContextTrail(backend="memory")
+        captured = _capture_retention_log_content(trail, monkeypatch)
+        now = datetime.now(timezone.utc)
+
+        try:
+            for i in range(5):
+                trail.log(f"batch1 record {i}", source="retriever")
+            for record in trail._backend._records:
+                record["timestamp"] = (now - timedelta(days=400)).isoformat()
+            for i in range(3):
+                trail.log(f"batch2 record {i}", source="tool")
+
+            engine = RetentionEngine(trail, retention_days=180)
+            res1 = engine.execute()
+            assert res1.deleted == 5
+            assert len(captured) == 1
+            payload1 = json.loads(captured[0])
+            assert payload1["purged_record_ids"] == [1, 2, 3, 4, 5]
+
+            # Immediate rerun: nothing expired
+            res2 = engine.execute()
+            assert res2.deleted == 0
+            assert len(captured) == 1
+
+            # Now age 2 of the batch2 records
+            trail._backend._records[5]["timestamp"] = (
+                now - timedelta(days=300)
+            ).isoformat()
+            trail._backend._records[6]["timestamp"] = (
+                now - timedelta(days=300)
+            ).isoformat()
+
+            assert engine.preview()["would_delete"] == 2
+
+            # Third run: purges only the 2 newly expired records
+            res3 = engine.execute()
+            assert res3.deleted == 2
+            assert len(captured) == 2
+            payload2 = json.loads(captured[1])
+            assert payload2["purged_record_ids"] == [6, 7]
+            assert (
+                payload2["purged_record_ids_sha256"]
+                != payload1["purged_record_ids_sha256"]
+            )
+        finally:
+            trail.close()
+
+    def test_delete_expired_excludes_tombstoned_records(self):
+        """Direct test: _delete_expired ignores already-tombstoned records."""
+        trail = ContextTrail(backend="memory")
+        try:
+            trail.log("record 0", source="retriever")
+            trail.log("record 1", source="retriever")
+            engine = RetentionEngine(trail, retention_days=180)
+
+            records = trail._backend.all_records()
+            deleted_first = engine._delete_expired(records)
+            assert deleted_first == [1, 2]
+
+            # Passing already tombstoned records returns empty
+            tombstoned_records = trail._backend.all_records()
+            deleted_second = engine._delete_expired(tombstoned_records)
+            assert deleted_second == []
+        finally:
+            trail.close()
+
+    def test_retention_rerun_postgres(self, pg_test_url, monkeypatch):
+        """PostgreSQL test: rerun retention does not duplicate purge events."""
+        trail = ContextTrail(storage_path=pg_test_url)
+        captured = _capture_retention_log_content(trail, monkeypatch)
+        now = datetime.now(timezone.utc)
+
+        try:
+            for i in range(3):
+                trail.log(f"old pg record {i}", source="retriever")
+
+            backend = trail._backend
+            with backend._pool.connection() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE trail SET timestamp = %s WHERE id IN (1, 2, 3)",
+                    ((now - timedelta(days=400)).isoformat(),),
+                )
+                conn.commit()
+
+            engine = RetentionEngine(trail, retention_days=180)
+            res1 = engine.execute()
+            assert res1.deleted == 3
+            assert len(captured) == 1
+
+            assert engine.preview()["would_delete"] == 0
+
+            res2 = engine.execute()
+            assert res2.deleted == 0
+            assert len(captured) == 1
+        finally:
+            trail.close()
+
 
 class TestRetentionCLI:
     def test_retain_dry_run(self, tmp_path):
@@ -362,3 +558,84 @@ class TestRetentionPagination:
             assert result.deleted == 7
         finally:
             trail.close()
+
+    def test_pagination_rerun_with_tombstones(self, monkeypatch):
+        """Regression test: paginated scanning correctly skips tombstones on rerun."""
+        trail = self._old_trail(7)
+        captured = _capture_retention_log_content(trail, monkeypatch)
+        try:
+            engine = RetentionEngine(trail, retention_days=180)
+            engine._QUERY_BATCH_SIZE = 2
+
+            # Run 1: purges all 7 records across multiple pages
+            res1 = engine.execute()
+            assert res1.deleted == 7
+            assert len(captured) == 1
+
+            # Preview on paginated scan
+            assert engine.preview()["would_delete"] == 0
+
+            # Run 2: skips all tombstoned records across pages
+            res2 = engine.execute()
+            assert res2.deleted == 0
+            assert len(captured) == 1
+        finally:
+            trail.close()
+
+
+class TestIsTombstone:
+    """Focused tests for _is_tombstone boolean semantics and edge cases."""
+
+    def test_dict_boolean_true(self):
+        assert _is_tombstone({"metadata_json": {"_tombstone": True}}) is True
+
+    def test_dict_boolean_false(self):
+        assert _is_tombstone({"metadata_json": {"_tombstone": False}}) is False
+
+    def test_dict_string_false(self):
+        assert _is_tombstone({"metadata_json": {"_tombstone": "false"}}) is False
+
+    def test_dict_integer_one(self):
+        assert _is_tombstone({"metadata_json": {"_tombstone": 1}}) is False
+
+    def test_json_boolean_true(self):
+        assert (
+            _is_tombstone({"metadata_json": json.dumps({"_tombstone": True})}) is True
+        )
+
+    def test_json_boolean_false(self):
+        assert (
+            _is_tombstone({"metadata_json": json.dumps({"_tombstone": False})}) is False
+        )
+
+    def test_json_string_false(self):
+        assert (
+            _is_tombstone({"metadata_json": json.dumps({"_tombstone": "false"})})
+            is False
+        )
+
+    def test_json_integer_one(self):
+        assert _is_tombstone({"metadata_json": json.dumps({"_tombstone": 1})}) is False
+
+    def test_malformed_json(self):
+        assert _is_tombstone({"metadata_json": "{not-valid-json"}) is False
+        assert (
+            _is_tombstone({"metadata_json": "plain string with _tombstone in it"})
+            is False
+        )
+
+    def test_missing_or_empty_metadata(self):
+        assert _is_tombstone({}) is False
+        assert _is_tombstone({"metadata_json": None}) is False
+        assert _is_tombstone({"metadata_json": ""}) is False
+        assert _is_tombstone({"metadata_json": "{}"}) is False
+
+    def test_non_dict_json(self):
+        assert (
+            _is_tombstone({"metadata_json": json.dumps(["_tombstone", True])}) is False
+        )
+
+    def test_source_name_retained_always_true(self):
+        assert _is_tombstone({"source_name": "retained"}) is True
+        assert _is_tombstone({"source_name": "retained", "metadata_json": {}}) is True
+        assert _is_tombstone({"source_name": "retained", "metadata_json": None}) is True
