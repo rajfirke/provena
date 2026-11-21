@@ -77,6 +77,8 @@ nav:
     - Retention Policy: guide/retention.md
     - Compliance Reports: guide/reports.md
     - Configuration: guide/configuration.md
+    - PostgreSQL: guide/postgresql.md
+    - Buffered Writes: guide/performance.md
     - Testing: guide/testing.md
   - Integrations:
     - LangChain: integrations/langchain.md
