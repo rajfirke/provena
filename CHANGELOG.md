@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Docs for PostgreSQL, buffered writes, TOML config, and the newer CLI commands.** The site now has a PostgreSQL guide and a buffered-write guide. The configuration page documents `ContextTrail(config=path)`, `signing_key_env`, buffer settings, and policy entries. The CLI reference covers `stats`, `retain`, `migrate`, and `mcp serve`, including `--config` / `PROVENA_CONFIG` and signing-key behavior (#56)
 - **`ContextTrail` can reject unknown context sources with `strict_source=True`.** The default remains permissive, and the setting is also available as a top-level TOML/YAML/dict config value.
 - **`PostgreSQLBackend` and `ContextTrail` accept an optional `advisory_lock_key`.** The key is an int or an int pair, passed as a kwarg or through TOML/YAML/dict config. The default stays `1`, so rolling upgrades keep one lock. Use a distinct key only for a second chain in the same database, for example under another `search_path` (#248)
 
