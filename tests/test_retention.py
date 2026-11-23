@@ -7,12 +7,33 @@ import json
 import os
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qsl, quote, urlsplit, urlunsplit
 from uuid import uuid4
 
 import pytest
 
 from provena import ContextTrail
 from provena.retention import EU_AI_ACT_MINIMUM_DAYS, RetentionEngine, _is_tombstone
+
+
+def _make_pg_test_url(conninfo: str, schema: str) -> str:
+    from psycopg.conninfo import conninfo_to_dict
+
+    parsed = urlsplit(conninfo)
+    query_params = [
+        (k, v)
+        for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+        if k != "options"
+    ]
+    existing_options = conninfo_to_dict(conninfo).get("options", "")
+    new_options = f"{existing_options} -c search_path={schema}".strip()
+    encoded_options = quote(new_options, safe="")
+    query_parts = [f"{quote(k, safe='')}={quote(v, safe='')}" for k, v in query_params]
+    query_parts.append(f"options={encoded_options}")
+    new_query = "&".join(query_parts)
+    return urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, new_query, parsed.fragment)
+    )
 
 
 @pytest.fixture
@@ -22,16 +43,12 @@ def pg_test_url() -> Generator[str, None, None]:
         pytest.skip("PostgreSQL not available (set PROVENA_TEST_PG_URL)")
     psycopg = pytest.importorskip("psycopg")
     from psycopg import sql
-    from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
     schema = f"retention_test_{uuid4().hex}"
     with psycopg.connect(conninfo, autocommit=True) as connection:
         connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
     try:
-        options = conninfo_to_dict(conninfo).get("options", "")
-        yield make_conninfo(
-            conninfo, options=f"{options} -c search_path={schema}".strip()
-        )
+        yield _make_pg_test_url(conninfo, schema)
     finally:
         with psycopg.connect(conninfo, autocommit=True) as connection:
             connection.execute(
@@ -491,6 +508,28 @@ class TestRetentionExecution:
             assert len(captured) == 1
         finally:
             trail.close()
+
+    def test_make_pg_test_url(self):
+        """Verify _make_pg_test_url yields a postgresql:// URI with search_path option."""
+        pytest.importorskip("psycopg")
+        from psycopg.conninfo import conninfo_to_dict
+
+        from provena.trail import _is_pg_url
+
+        base_url = "postgresql://provena:provena@localhost:5432/provena_test"
+        url = _make_pg_test_url(base_url, "test_schema_123")
+        assert _is_pg_url(url)
+        assert url.startswith("postgresql://")
+        assert "options=-c%20search_path%3Dtest_schema_123" in url
+        assert conninfo_to_dict(url)["options"] == "-c search_path=test_schema_123"
+
+        # Preserves existing query parameters and options
+        with_params = "postgresql://localhost:5432/db?sslmode=require&options=-c%20statement_timeout%3D1000"
+        url2 = _make_pg_test_url(with_params, "schema_abc")
+        assert _is_pg_url(url2)
+        d2 = conninfo_to_dict(url2)
+        assert d2["sslmode"] == "require"
+        assert d2["options"] == "-c statement_timeout=1000 -c search_path=schema_abc"
 
 
 class TestRetentionCLI:
