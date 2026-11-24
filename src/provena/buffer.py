@@ -111,13 +111,22 @@ class WriteBuffer:
         with self._lock:
             return self._flush_locked()
 
-    def close(self) -> None:
-        """Stop the background thread and flush remaining records."""
+    def close(self) -> int:
+        """Stop the background thread and return records left after flushing."""
         self._stop.set()
         if self._thread.is_alive():
             self._thread.join(timeout=5)
         with self._lock:
             self._flush_locked()
+            pending = len(self._buffer)
+        if not pending:
+            _unregister_for_sigterm(self)
+        return pending
+
+    def detach(self) -> None:
+        """Remove process-shutdown retries after the owning backend closes."""
+        atexit.unregister(self._atexit_flush)
+        self._finalizer.detach()
         _unregister_for_sigterm(self)
 
     def _flush_loop(self) -> None:
