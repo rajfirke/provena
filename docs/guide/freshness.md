@@ -47,7 +47,7 @@ Every logged entry receives one of three freshness verdicts:
 |-------------|------------------------------------------------------------|
 | **FRESH**   | Content age is within the `max_age_days` threshold          |
 | **STALE**   | Content age exceeds the threshold                           |
-| **UNKNOWN** | No timestamp metadata and no temporal markers were detected |
+| **UNKNOWN** | No timestamp metadata or temporal markers were detected, or all detected dates are genuinely in the future (beyond the one-day tolerance) |
 
 ```python
 from provena import ContextTrail, ProvenanceMetadata
@@ -86,6 +86,23 @@ print(summary["freshness"])
 # {'FRESH': 1, 'STALE': 1, 'UNKNOWN': 1}
 ```
 
+## Future-Date Tolerance
+
+Dates that fall more than one day after the reference time are treated as
+genuinely future-dated and cannot be used to verify freshness, so they return
+`UNKNOWN`. This prevents a future projection or a clock-skewed timestamp from
+making old content appear fresh.
+
+A one-day tolerance absorbs minor clock skew: a date within one day of the
+reference time (including a date exactly one day ahead, or equal to the
+reference time) is treated as current and evaluated normally.
+
+When content contains multiple temporal markers, genuinely future markers are
+ignored and freshness is evaluated from the usable past or current markers (the
+newest usable date wins). If at least one usable marker exists, the verdict
+details list the ignored future-dated marker(s). If every detected marker is
+genuinely future-dated, the verdict is `UNKNOWN`.
+
 ## Temporal Patterns Detected
 
 When metadata timestamps are absent, Provena scans content text for these
@@ -118,10 +135,14 @@ record = trail.log(
 # Freshness is evaluated based on March 2024
 ```
 
-!!! tip "Oldest date wins"
+!!! tip "Newest usable date wins"
     When multiple temporal markers are found in a single piece of content,
-    Provena uses the **oldest** detected date for the freshness calculation.
-    This is a conservative approach that avoids false FRESH verdicts.
+    Provena uses the **newest** detected date for the freshness calculation
+    (`max` of the detected dates). Genuinely future-dated markers (more than
+    one day ahead of the reference time) are excluded from the selection, so a
+    future projection cannot hide the last real update date or make stale
+    content appear fresh. When future markers are ignored, the verdict details
+    list them.
 
 ## Disabling Temporal Detection
 

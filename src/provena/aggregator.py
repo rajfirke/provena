@@ -264,34 +264,91 @@ class TrailAggregator:
 
         results: list[dict[str, Any]] = []
 
+        run_record_keys: set[tuple[str, int]] = set()
+        if run_id:
+            for h in self._handoffs:
+                if h.run_id == run_id:
+                    run_record_keys.add((h.from_trail, h.from_record_id))
+                    run_record_keys.add((h.to_trail, h.to_record_id))
+            # Only a trail that took part in the run can hold one of its
+            # records, so the others need not be read at all.
+            run_labels = {label for label, _ in run_record_keys}
+            targets = {
+                label: trail for label, trail in targets.items() if label in run_labels
+            }
+
         for label, trail in targets.items():
-            records = trail.query(
-                source=source_str,
-                start=start,
-                end=end,
-                provenance_status=provenance_status,
-                freshness_status=freshness_status,
-                limit=limit,
-            )
+            if run_id:
+                # A run's records sit wherever they were logged, so the run
+                # filter has to see the whole trail. Taking the first `limit`
+                # rows per trail and filtering afterwards dropped the very
+                # records the filter was looking for: a run whose handoff
+                # endpoints fall past that page came back short or empty.
+                records = [
+                    r
+                    for r in self._query_exhaustive(
+                        trail,
+                        source=source_str,
+                        start=start,
+                        end=end,
+                        provenance_status=provenance_status,
+                        freshness_status=freshness_status,
+                    )
+                    if (label, r.get("id", -1)) in run_record_keys
+                ]
+            else:
+                records = trail.query(
+                    source=source_str,
+                    start=start,
+                    end=end,
+                    provenance_status=provenance_status,
+                    freshness_status=freshness_status,
+                    limit=limit,
+                )
             for r in records:
                 r["_trail"] = label
             results.extend(records)
 
         results.sort(key=lambda r: r.get("timestamp", ""))
 
-        if run_id:
-            run_record_keys: set[tuple[str, int]] = set()
-            for h in self._handoffs:
-                if h.run_id == run_id:
-                    run_record_keys.add((h.from_trail, h.from_record_id))
-                    run_record_keys.add((h.to_trail, h.to_record_id))
-            results = [
-                r
-                for r in results
-                if (r.get("_trail", ""), r.get("id", -1)) in run_record_keys
-            ]
-
         return results[:limit]
+
+    @staticmethod
+    def _query_exhaustive(
+        trail: Any,
+        *,
+        source: str | None,
+        start: datetime | None,
+        end: datetime | None,
+        provenance_status: str | None,
+        freshness_status: str | None,
+    ) -> list[dict[str, Any]]:
+        """Every matching record in one trail, paged past the per-call cap.
+
+        ``ContextTrail.query`` caps each call, so a filter that has to be
+        applied across a whole trail reads it a page at a time, the way
+        ``detect_gaps`` consumes stale and missing-provenance records.
+        """
+        records: list[dict[str, Any]] = []
+        offset = 0
+        batch_size = 1000
+        while True:
+            batch = trail.query(
+                source=source,
+                start=start,
+                end=end,
+                provenance_status=provenance_status,
+                freshness_status=freshness_status,
+                limit=batch_size,
+                offset=offset,
+            )
+            if not batch:
+                break
+            records.extend(batch)
+            if len(batch) < batch_size:
+                break
+            offset += len(batch)
+        return records
 
     def verify_chain(self) -> AggregateVerdict:
         """Verify chain integrity of every registered trail.

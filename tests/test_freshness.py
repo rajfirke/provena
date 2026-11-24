@@ -348,3 +348,227 @@ class TestFreshnessCheckerEdgeCases:
         result = checker.check(entry, content=content, now=now)
         assert result.status == "STALE"
         assert result.detected_date.month == 9
+
+
+class TestFreshnessCheckerFutureDates:
+    """Regression tests for future date handling (GitHub issue: future dates incorrectly marked FRESH)."""
+
+    def test_future_provenance_date_returns_unknown(self):
+        """Future provenance created_at should return UNKNOWN, not FRESH."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        future_date = now + timedelta(days=30)
+        entry = _entry(created_at=future_date)
+        result = checker.check(entry, now=now)
+        assert result.status == "UNKNOWN"
+        assert "future" in result.details.lower()
+        assert result.detected_date == future_date
+
+    def test_future_temporal_marker_returns_unknown(self):
+        """Future temporal markers in content should return UNKNOWN, not FRESH."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        future_content = "As of 2030, the policy will be updated"
+        result = checker.check(entry, content=future_content, now=now)
+        assert result.status == "UNKNOWN"
+        assert "future" in result.details.lower()
+        assert result.detected_date is not None
+        assert result.detected_date.year == 2030
+
+    def test_future_iso_date_returns_unknown(self):
+        """Future ISO dates in content should return UNKNOWN."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        future_content = "Published on 2030-06-15"
+        result = checker.check(entry, content=future_content, now=now)
+        assert result.status == "UNKNOWN"
+        assert "future" in result.details.lower()
+
+    def test_future_month_year_returns_unknown(self):
+        """Future month-year in content should return UNKNOWN."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        future_content = "Updated January 2030"
+        result = checker.check(entry, content=future_content, now=now)
+        assert result.status == "UNKNOWN"
+        assert "future" in result.details.lower()
+
+    def test_future_quarter_returns_unknown(self):
+        """Future quarter in content should return UNKNOWN."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        future_content = "Q3 2030 report"
+        result = checker.check(entry, content=future_content, now=now)
+        assert result.status == "UNKNOWN"
+        assert "future" in result.details.lower()
+
+    def test_future_half_year_returns_unknown(self):
+        """Future half-year in content should return UNKNOWN."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        future_content = "H2 2030 projections"
+        result = checker.check(entry, content=future_content, now=now)
+        assert result.status == "UNKNOWN"
+        assert "future" in result.details.lower()
+
+    def test_future_year_context_returns_unknown(self):
+        """Future year context (as of/in/since) should return UNKNOWN."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        for phrase in [
+            "as of 2030",
+            "in 2030",
+            "since 2030",
+            "from 2030",
+            "circa 2030",
+        ]:
+            future_content = f"{phrase}, data shows growth"
+            result = checker.check(entry, content=future_content, now=now)
+            assert result.status == "UNKNOWN", f"Failed for phrase: {phrase}"
+            assert "future" in result.details.lower()
+
+    def test_future_update_marker_returns_unknown(self):
+        """Future update markers should return UNKNOWN."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        future_content = "last updated: June 2030"
+        result = checker.check(entry, content=future_content, now=now)
+        assert result.status == "UNKNOWN"
+        assert "future" in result.details.lower()
+
+    def test_exactly_now_provenance_date_is_fresh(self):
+        """Provenance date exactly at 'now' should be FRESH."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(created_at=now)
+        result = checker.check(entry, now=now)
+        assert result.status == "FRESH"
+
+    def test_past_provenance_date_still_fresh(self):
+        """Past provenance dates within threshold should still be FRESH."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        past_date = now - timedelta(days=30)
+        entry = _entry(created_at=past_date)
+        result = checker.check(entry, now=now)
+        assert result.status == "FRESH"
+
+    def test_past_temporal_marker_still_stale(self):
+        """Past temporal markers beyond threshold should still be STALE."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        past_content = "As of 2020, the policy was updated"
+        result = checker.check(entry, content=past_content, now=now)
+        assert result.status == "STALE"
+        assert result.detected_date is not None
+        assert result.detected_date.year == 2020
+
+    def test_mixed_past_and_future_markers_uses_past_marker(self):
+        """Mixed past and future markers: genuinely future markers are ignored,
+        freshness is evaluated from the usable past marker, and the ignored
+        future marker is mentioned in the details."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        # 2025-06-15 is old (outside threshold); 2030-01-01 is genuinely future.
+        mixed_content = "Updated 2025-06-15, projected 2030-01-01"
+        result = checker.check(entry, content=mixed_content, now=now)
+        assert result.status == "STALE", (
+            f"Expected STALE, got {result.status}: {result.details}"
+        )
+        assert "2030-01-01" in result.details
+        assert result.detected_date is not None
+        assert result.detected_date.year == 2025
+
+    def test_recent_past_marker_with_future_marker_uses_past(self):
+        """A recent past marker combined with a future marker uses the past
+        marker; the future marker is ignored and noted in details."""
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        mixed_content = "Updated 2025-12-20, projected 2030-01-01"
+        result = checker.check(entry, content=mixed_content, now=now)
+        assert result.status == "FRESH", (
+            f"Expected FRESH, got {result.status}: {result.details}"
+        )
+        assert "2030-01-01" in result.details
+        assert result.detected_date.year == 2025
+
+
+class TestFreshnessCheckerFutureTolerance:
+    """One-day future-date tolerance and mixed past/future marker handling."""
+
+    def test_metadata_date_more_than_one_day_future_returns_unknown(self):
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(created_at=now + timedelta(days=2))
+        result = checker.check(entry, now=now)
+        assert result.status == "UNKNOWN"
+        assert "future" in result.details.lower()
+        assert result.detected_date == now + timedelta(days=2)
+
+    def test_content_marker_more_than_one_day_future_returns_unknown(self):
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        result = checker.check(entry, content="As of 2030, the policy applies", now=now)
+        assert result.status == "UNKNOWN"
+        assert "future" in result.details.lower()
+        assert result.detected_date.year == 2030
+
+    def test_metadata_date_within_one_day_future_handled_normally(self):
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(created_at=now + timedelta(hours=12))
+        result = checker.check(entry, now=now)
+        assert result.status == "FRESH"
+
+    def test_content_marker_within_one_day_future_handled_normally(self):
+        now = datetime(2026, 1, 1, 6, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        # 2026-01-02 is 18 hours ahead of now: within the one-day tolerance.
+        result = checker.check(entry, content="Updated on 2026-01-02", now=now)
+        assert result.status == "FRESH"
+
+    def test_date_exactly_one_day_future_follows_tolerance_boundary(self):
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        # Exactly one day ahead is within the tolerance: handled normally (FRESH).
+        entry = _entry(created_at=now + timedelta(days=1))
+        result = checker.check(entry, now=now)
+        assert result.status == "FRESH"
+
+        # Just past one day is genuinely future-dated: UNKNOWN.
+        entry = _entry(created_at=now + timedelta(days=1, seconds=1))
+        result = checker.check(entry, now=now)
+        assert result.status == "UNKNOWN"
+
+    def test_date_equal_to_reference_retains_fresh(self):
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(created_at=now)
+        result = checker.check(entry, now=now)
+        assert result.status == "FRESH"
+
+    def test_all_detected_markers_in_future_return_unknown(self):
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        checker = FreshnessChecker(max_age_days=90)
+        entry = _entry(content="test")
+        result = checker.check(
+            entry,
+            content="As of 2030, revised in 2031, from 2032",
+            now=now,
+        )
+        assert result.status == "UNKNOWN"
+        assert "genuinely future-dated" in result.details
+        assert result.detected_date is not None
+        assert result.detected_date.year == 2032

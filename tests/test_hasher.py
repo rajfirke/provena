@@ -77,6 +77,24 @@ class TestChainHasher:
         h2 = h2_hasher.compute_chain_hash("prev", "c", "s", "t")
         assert h1 != h2
 
+    def test_payload_signature_verification(self):
+        hasher = ChainHasher(signing_key=b"archive-key")
+        payload = b"archive bytes"
+        signature = hasher.sign_payload(payload)
+
+        assert signature is not None
+        assert hasher.verify_payload_signature(payload, signature)
+        assert not hasher.verify_payload_signature(payload + b"!", signature)
+        assert not ChainHasher(signing_key=b"other-key").verify_payload_signature(
+            payload, signature
+        )
+
+    def test_payload_signature_is_unavailable_without_signing(self):
+        hasher = ChainHasher()
+
+        assert hasher.sign_payload(b"archive bytes") is None
+        assert not hasher.verify_payload_signature(b"archive bytes", "signature")
+
     def test_verify_link_valid(self):
         hasher = ChainHasher()
         h = hasher.compute_chain_hash("prev", "content", "src", "ts")

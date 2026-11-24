@@ -11,6 +11,8 @@ is not set. To run these tests locally:
 from __future__ import annotations
 
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -66,6 +68,27 @@ def _make_record(**overrides):
     return defaults
 
 
+def _advisory_lock_keys(backend, pid: int) -> list[int | tuple[int, int]]:
+    """Read the advisory locks held by ``pid`` as normalized keys."""
+    with backend._pool.connection() as conn:
+        rows = conn.execute(
+            "SELECT classid::bigint, objid::bigint, objsubid "
+            "FROM pg_locks WHERE locktype = 'advisory' AND pid = %s",
+            (pid,),
+        ).fetchall()
+
+    keys: list[int | tuple[int, int]] = []
+    for classid, objid, objsubid in rows:
+        if objsubid == 1:
+            key = (int(classid) << 32) | int(objid)
+            if key >= 1 << 63:
+                key -= 1 << 64
+            keys.append(key)
+        else:
+            keys.append((int(classid), int(objid)))
+    return keys
+
+
 class TestPostgreSQLBackendCRUD:
     def test_append_and_get(self, pg_backend):
         record = _make_record()
@@ -110,6 +133,12 @@ class TestPostgreSQLBackendCRUD:
         assert len(records) == 3
         assert records[0]["content_hash"] == "a"
         assert records[2]["content_hash"] == "c"
+
+    def test_iter_records_uses_call_time_snapshot(self, pg_backend):
+        pg_backend.append(_make_record(content_hash="a"))
+        records = pg_backend.iter_records()
+        pg_backend.append(_make_record(content_hash="b"))
+        assert [record["content_hash"] for record in records] == ["a"]
 
     def test_truncated_normalized_to_int(self, pg_backend):
         pg_backend.append(_make_record(truncated=True))
@@ -202,6 +231,156 @@ class TestPostgreSQLBackendSchema:
         backend2.close()
 
 
+class TestPostgreSQLAdvisoryLocks:
+    def test_default_lock_key_is_one(self, pg_backend):
+        with pg_backend._pool.connection() as lock_conn:
+            pid = lock_conn.execute("SELECT pg_backend_pid()").fetchone()[0]
+            sql, params = pg_backend._advisory_lock_sql()
+            assert sql == "SELECT pg_advisory_xact_lock(%s)"
+            assert params == (1,)
+
+            lock_conn.execute(sql, params)
+            assert _advisory_lock_keys(pg_backend, pid) == [1]
+
+    def test_default_lock_key_serializes_with_pre_248_writers(self, pg_backend):
+        import psycopg
+
+        with psycopg.connect(_pg_conninfo) as lock_conn:
+            lock_conn.execute("SELECT pg_advisory_xact_lock(1)")
+
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(
+                pg_backend.append, _make_record(content_hash="serialized")
+            )
+            try:
+                time.sleep(0.5)
+                assert not future.done()
+
+                lock_conn.rollback()
+                record_id = future.result(timeout=5)
+            finally:
+                executor.shutdown(wait=True, cancel_futures=True)
+
+            assert record_id >= 1
+            assert pg_backend.count() == 1
+
+    def test_explicit_int_lock_key_is_used(self, pg_backend):
+        from provena.storage_pg import PostgreSQLBackend
+
+        backend = PostgreSQLBackend(
+            conninfo=_pg_conninfo, pool_size=2, advisory_lock_key=424242
+        )
+        try:
+            with backend._pool.connection() as lock_conn:
+                pid = lock_conn.execute("SELECT pg_backend_pid()").fetchone()[0]
+                sql, params = backend._advisory_lock_sql()
+                assert params == (424242,)
+
+                lock_conn.execute(sql, params)
+                assert _advisory_lock_keys(backend, pid) == [424242]
+        finally:
+            backend.close()
+
+    def test_explicit_pair_lock_key_is_used(self, pg_backend):
+        from provena.storage_pg import PostgreSQLBackend
+
+        backend = PostgreSQLBackend(
+            conninfo=_pg_conninfo, pool_size=2, advisory_lock_key=(123, 456)
+        )
+        try:
+            with backend._pool.connection() as lock_conn:
+                pid = lock_conn.execute("SELECT pg_backend_pid()").fetchone()[0]
+                sql, params = backend._advisory_lock_sql()
+                assert params == (123, 456)
+                assert "%s, %s" in sql
+
+                lock_conn.execute(sql, params)
+                assert _advisory_lock_keys(backend, pid) == [(123, 456)]
+        finally:
+            backend.close()
+
+    def test_distinct_lock_keys_append_without_serializing(self, pg_backend):
+        from provena.storage_pg import PostgreSQLBackend
+
+        backend_a = PostgreSQLBackend(
+            conninfo=_pg_conninfo, pool_size=1, advisory_lock_key=111111
+        )
+        backend_b = PostgreSQLBackend(
+            conninfo=_pg_conninfo, pool_size=1, advisory_lock_key=222222
+        )
+        try:
+            with backend_a._pool.connection() as lock_conn:
+                lock_conn.execute("SELECT pg_advisory_xact_lock(%s)", (111111,))
+
+                executor = ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(
+                    backend_b.append, _make_record(content_hash="concurrent")
+                )
+                try:
+                    record_id = future.result(timeout=5)
+                finally:
+                    # Release the lock so a serializing append cannot hang teardown.
+                    lock_conn.rollback()
+                    executor.shutdown(wait=True, cancel_futures=True)
+
+            assert record_id >= 1
+            assert backend_b.count() == 1
+        finally:
+            backend_a.close()
+            backend_b.close()
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            True,
+            1.5,
+            "lock",
+            (1,),
+            (1, 2, 3),
+            (1, "2"),
+            (2**31, 0),
+            2**63,
+        ],
+    )
+    def test_invalid_lock_key_rejected(self, key):
+        from provena.storage_pg import PostgreSQLBackend
+
+        with pytest.raises(ValueError, match="advisory_lock_key"):
+            PostgreSQLBackend(conninfo=_pg_conninfo, advisory_lock_key=key)
+
+
+class TestPostgreSQLAdvisoryLockConfig:
+    def test_context_trail_direct_key(self, pg_backend):
+        from provena.trail import ContextTrail
+
+        trail = ContextTrail(
+            storage_path=_pg_conninfo,
+            backend="postgresql",
+            advisory_lock_key=777,
+        )
+        try:
+            assert trail._backend._advisory_lock_key == 777
+        finally:
+            trail.close()
+
+    def test_context_trail_config_key(self, pg_backend):
+        from provena.trail import ContextTrail
+
+        trail = ContextTrail(
+            config={
+                "storage": {
+                    "backend": "postgresql",
+                    "path": _pg_conninfo,
+                    "advisory_lock_key": [12, 34],
+                }
+            }
+        )
+        try:
+            assert trail._backend._advisory_lock_key == (12, 34)
+        finally:
+            trail.close()
+
+
 class TestPostgreSQLImportError:
     @pytest.mark.skipif(_pg_importable, reason="psycopg IS installed")
     def test_import_error_message(self):
@@ -209,6 +388,45 @@ class TestPostgreSQLImportError:
 
         with pytest.raises(ImportError, match="psycopg"):
             PostgreSQLBackend(conninfo="postgresql://localhost/test")
+
+
+class TestPostgreSQLTipRepairReceipt:
+    def test_returned_record_matches_stored_row_after_tip_repair(self, pg_backend):
+        # Regression for #231. PostgreSQLBackend.append holds an advisory lock
+        # and, when the submitted previous_hash is no longer the tip, recomputes
+        # both hashes and stores the repaired pair. Those values used to stay
+        # local to append(), so the TrailRecord handed back to the caller
+        # described a link that is not in the row. The value log() returns is
+        # the tamper-evident receipt, so a reviewer recomputing from it has to
+        # land on what the database holds.
+        from provena import ContextTrail
+
+        writer_a = ContextTrail(storage_path=_pg_conninfo)
+        writer_b = ContextTrail(storage_path=_pg_conninfo)
+        try:
+            writer_a.log("from writer A", source="retriever")
+
+            # writer_b still holds the tip it read when it was constructed, so
+            # this insert goes through the repair branch.
+            record = writer_b.log("from writer B", source="retriever")
+            stored = writer_b._backend.get(record.id)
+
+            assert stored is not None
+            assert record.chain_hash == stored["chain_hash"]
+            assert record.previous_hash == stored["previous_hash"]
+
+            # The writer that lost the race must not keep submitting the stale
+            # tip on its next call.
+            follow_up = writer_b.log("second from writer B", source="retriever")
+            stored_follow_up = writer_b._backend.get(follow_up.id)
+
+            assert stored_follow_up is not None
+            assert follow_up.chain_hash == stored_follow_up["chain_hash"]
+            assert follow_up.previous_hash == stored_follow_up["previous_hash"]
+            assert writer_b.verify_chain().intact
+        finally:
+            writer_a.close()
+            writer_b.close()
 
 
 class TestPostgreSQLTimeZone:
@@ -268,3 +486,84 @@ class TestPostgreSQLTimeZone:
             assert tz == "UTC"
         finally:
             backend.close()
+
+
+class TestPostgreSQLBufferedTipResync:
+    def test_buffered_trail_stops_repairing_after_a_flush(self, pg_backend):
+        # A buffered trail computes each chain hash locally and the record
+        # reaches PostgreSQL later, at flush. If another writer moved the tip
+        # in between, append() repairs both hashes on the way in. The trail
+        # used to keep its locally computed hash, so every later record chained
+        # off a hash the table does not hold and was repaired in turn: one
+        # interleaved write left the trail repairing forever, paying an extra
+        # tip SELECT and a rehash on every insert. The stored chain stayed
+        # intact throughout, because the repair is unconditional, so nothing
+        # surfaced the drift.
+        from provena import ContextTrail
+
+        buffered = ContextTrail(
+            storage_path=_pg_conninfo, buffered=True, flush_interval=3600
+        )
+        other = ContextTrail(storage_path=_pg_conninfo)
+        repairs = []
+
+        original_append = buffered._backend.append
+
+        def counting_append(record):
+            submitted = record["chain_hash"]
+            record_id = original_append(record)
+            if record["chain_hash"] != submitted:
+                repairs.append(record_id)
+            return record_id
+
+        buffered._backend.append = counting_append
+
+        try:
+            buffered.log("first", source="retriever")
+            buffered.flush()
+
+            # One interleaved write moves the tip out from under the trail.
+            other.log("interloper", source="retriever")
+
+            for i in range(5):
+                buffered.log(f"solo {i}", source="retriever")
+                buffered.flush()
+
+            # Exactly one repair: the record logged against the stale tip.
+            # Without the resync every one of the five is repaired as well.
+            assert len(repairs) == 1
+            assert buffered.verify_chain().intact
+        finally:
+            buffered.close()
+            other.close()
+
+    def test_buffered_receipt_matches_stored_row_once_the_tip_is_resynced(
+        self, pg_backend
+    ):
+        # The receipt for a record that was already pending when the tip moved
+        # cannot be corrected: log() returned it before the flush repaired it.
+        # Every record logged after the buffer drains gets an accurate one.
+        from provena import ContextTrail
+
+        buffered = ContextTrail(
+            storage_path=_pg_conninfo, buffered=True, flush_interval=3600
+        )
+        other = ContextTrail(storage_path=_pg_conninfo)
+        try:
+            buffered.log("pending when the tip moves", source="retriever")
+            other.log("interloper", source="retriever")
+            buffered.flush()
+
+            record = buffered.log("logged after the drain", source="retriever")
+            buffered.flush()
+
+            stored = next(
+                row
+                for row in other.query(limit=100)
+                if row["content_hash"] == record.entry.content_hash
+            )
+            assert record.chain_hash == stored["chain_hash"]
+            assert record.previous_hash == stored["previous_hash"]
+        finally:
+            buffered.close()
+            other.close()

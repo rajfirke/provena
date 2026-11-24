@@ -15,6 +15,20 @@ from provena.models import ContextSource
 from provena.storage import InMemoryBackend
 
 
+def _record(**overrides):
+    """A minimal buffer record; override any field a test cares about."""
+    record = {
+        "content_hash": "a",
+        "source": "r",
+        "source_name": "t",
+        "timestamp": "2026-07-20T00:00:00Z",
+        "chain_hash": "c",
+        "previous_hash": "p",
+    }
+    record.update(overrides)
+    return record
+
+
 class TestWriteBuffer:
     def test_append_and_flush(self):
         backend = InMemoryBackend()
@@ -318,6 +332,78 @@ class TestWriteBuffer:
             ("raise", signal.SIGTERM),
         ]
 
+    def test_settled_tip_is_none_until_the_buffer_drains(self):
+        # The tip is only authoritative once nothing is pending: records still
+        # in the buffer are appended before the caller's next one, so the
+        # caller should go on extending them rather than jumping back to the
+        # last stored row.
+        backend = InMemoryBackend()
+        buf = WriteBuffer(backend, buffer_size=100, flush_interval=60)
+        try:
+            assert buf.settled_tip() is None
+
+            buf.append(_record(chain_hash="first"))
+            assert buf.settled_tip() is None
+
+            buf.flush()
+            assert buf.settled_tip() == "first"
+
+            buf.append(_record(chain_hash="second"))
+            assert buf.settled_tip() is None
+
+            buf.flush()
+            assert buf.settled_tip() == "second"
+        finally:
+            buf.close()
+
+    def test_flush_handles_a_record_without_a_chain_hash(self):
+        # append() takes whatever dict the caller hands it, and the chain
+        # fields are not required. Draining such a record must not raise, and
+        # must leave the last known tip alone.
+        backend = InMemoryBackend()
+        buf = WriteBuffer(backend, buffer_size=100, flush_interval=60)
+        try:
+            buf.append(_record(chain_hash="real"))
+            buf.flush()
+
+            unchained = _record()
+            del unchained["chain_hash"]
+            buf.append(unchained)
+
+            assert buf.flush() == 1
+            assert buf.settled_tip() == "real"
+        finally:
+            buf.close()
+
+    def test_settled_tip_reports_the_hash_the_backend_stored(self):
+        # A backend may repair the link it stores and write the stored pair
+        # back onto the record. The buffer has to report that value, not the
+        # one it submitted, or the caller resyncs onto a hash nobody holds.
+        class RepairingBackend(InMemoryBackend):
+            def append(self, record):
+                record["chain_hash"] = "repaired"
+                record["previous_hash"] = "repaired-prev"
+                return super().append(record)
+
+        buf = WriteBuffer(RepairingBackend(), buffer_size=100, flush_interval=60)
+        try:
+            buf.append(_record(chain_hash="submitted"))
+            buf.flush()
+            assert buf.settled_tip() == "repaired"
+        finally:
+            buf.close()
+
+    def test_settled_tip_is_unchanged_when_a_flush_writes_nothing(self):
+        backend = InMemoryBackend()
+        buf = WriteBuffer(backend, buffer_size=100, flush_interval=60)
+        try:
+            buf.append(_record(chain_hash="only"))
+            buf.flush()
+            assert buf.flush() == 0
+            assert buf.settled_tip() == "only"
+        finally:
+            buf.close()
+
 
 class TestContextTrailBuffered:
     def test_unbuffered_close_returns_zero(self):
@@ -378,7 +464,17 @@ class TestContextTrailBuffered:
         # After close, records should have been flushed
         # Can't query after close, but buffer should be empty
 
-    def test_close_reports_pending_records_and_closes_backend(self, caplog):
+    def test_close_reports_pending_records_and_closes_backend(
+        self, caplog, monkeypatch
+    ):
+        unregistered = []
+        real_unregister = buffer_module.atexit.unregister
+
+        def track_unregister(callback):
+            unregistered.append(callback)
+            return real_unregister(callback)
+
+        monkeypatch.setattr(buffer_module.atexit, "unregister", track_unregister)
         errors = []
         trail = ContextTrail(
             backend="memory",
@@ -414,6 +510,9 @@ class TestContextTrailBuffered:
         assert trail._buffer is not None
         assert trail._buffer.pending == 1
         assert close_calls == 1
+        assert trail._buffer not in buffer_module._active_buffers
+        assert not trail._buffer._finalizer.alive
+        assert trail._buffer._atexit_flush in unregistered
         assert trail._backend.count() == 0
         assert "1 remaining" in caplog.text
         assert len(errors) == 1
@@ -427,7 +526,17 @@ class TestContextTrailBuffered:
             trail._buffer._buffer.clear()
         assert trail._buffer.close() == 0
 
-    def test_close_reports_buffer_close_error_and_closes_backend(self, tmp_path):
+    def test_close_reports_buffer_close_error_and_closes_backend(
+        self, tmp_path, monkeypatch
+    ):
+        unregistered = []
+        real_unregister = buffer_module.atexit.unregister
+
+        def track_unregister(callback):
+            unregistered.append(callback)
+            return real_unregister(callback)
+
+        monkeypatch.setattr(buffer_module.atexit, "unregister", track_unregister)
         errors = []
         db_path = str(tmp_path / "trail.db")
         trail = ContextTrail(
@@ -459,6 +568,9 @@ class TestContextTrailBuffered:
         assert isinstance(errors[0], OSError)
         assert str(errors[0]) == "simulated disk full"
         assert trail._backend._conn is None
+        assert trail._buffer not in buffer_module._active_buffers
+        assert not trail._buffer._finalizer.alive
+        assert trail._buffer._atexit_flush in unregistered
         assert trail.health()["errors"] == 1
 
         # Clear intentionally unsaved test data and unregister the stopped buffer.

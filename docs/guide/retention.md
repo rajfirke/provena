@@ -205,10 +205,33 @@ Provena uses a **tombstone pattern**:
      "deleted": 142,
      "archived": 142,
      "archive_path": "archives/audit_2025_purge.json",
-     "retention_days": 365
+     "archive_sha256": "<sha256>",
+     "archive_hmac_sha256": "<hmac-sha256-or-null>",
+     "retention_days": 365,
+     "purged_record_ids": [1, 2, 3],
+     "purged_record_ids_truncated": true,
+     "purged_record_ids_sha256": "<sha256>",
+     "purged_chain_hashes_sha256": "<sha256>"
    }
    ```
-   with `source="custom"` and `source_name="provena:retention"`.
+   with `source="custom"` and `source_name="provena:retention"`. IDs are sorted;
+   at most 100 are included. The ID digest covers the compact JSON array of all
+   purged IDs, and the chain-hash digest covers the compact JSON array of
+   `[record_id, chain_hash]` pairs sorted by ID. Both digests are part of the
+   content hashed into the trail.
+
+   When an archive is written, `archive_sha256` covers the exact UTF-8 bytes on
+   disk. `archive_hmac_sha256` is also populated when trail signing is enabled;
+   it uses the same signing key as the chain. It is `null` for unsigned trails.
+   Provena does not currently rotate signing keys, so there is no key ID.
+
+   The trail stores the manifest's content hash, not its raw JSON. The hash
+   commits to the count, bounded IDs, full ID digest, chain-hash digest, and
+   archive integrity fields. Keep the archive when a readable full listing is
+   required. Purged rows remain as tombstones and can be queried with
+   `source_name="retained"` to reconstruct the IDs and chain hashes. The
+   `source_name` marker itself is not covered by the chain, so it is not proof
+   that a tombstone row belongs to a particular purge event.
 
 After retention execution, **full chain verification remains valid**:
 

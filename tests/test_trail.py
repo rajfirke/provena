@@ -100,6 +100,17 @@ class TestContextTrailVerify:
         assert verdict.intact
         assert verdict.total_records == 10
 
+    def test_verify_streams_without_materializing_all_records(self, memory_trail):
+        memory_trail.log("test", source="retriever")
+
+        def fail_all_records():
+            raise AssertionError("verify_chain must use iter_records")
+
+        memory_trail._backend.all_records = fail_all_records  # type: ignore[method-assign]
+        verdict = memory_trail.verify_chain()
+        assert verdict.intact
+        assert verdict.total_records == 1
+
     def test_verify_detects_tamper(self):
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
@@ -178,14 +189,14 @@ class TestContextTrailVerify:
         memory_trail.log("seed", source="retriever")
         entered = threading.Event()
         release = threading.Event()
-        real_all_records = memory_trail._backend.all_records
+        real_iter_records = memory_trail._backend.iter_records
 
-        def gated_all_records():
+        def gated_iter_records():
             entered.set()
             assert release.wait(timeout=5)
-            return real_all_records()
+            return real_iter_records()
 
-        memory_trail._backend.all_records = gated_all_records  # type: ignore[method-assign]
+        memory_trail._backend.iter_records = gated_iter_records  # type: ignore[method-assign]
 
         verdicts: list = []
 
@@ -214,7 +225,7 @@ class TestContextTrailVerify:
         assert verdicts[0].intact
         assert verdicts[0].total_records == 1
         assert logged.is_set()
-        memory_trail._backend.all_records = real_all_records  # type: ignore[method-assign]
+        memory_trail._backend.iter_records = real_iter_records  # type: ignore[method-assign]
         final = memory_trail.verify_chain()
         assert final.intact
         assert final.total_records == 2
@@ -225,14 +236,14 @@ class TestContextTrailVerify:
             trail.log("seed", source="retriever")
             entered = threading.Event()
             release = threading.Event()
-            real_all_records = trail._backend.all_records
+            real_iter_records = trail._backend.iter_records
 
-            def gated_all_records():
+            def gated_iter_records():
                 entered.set()
                 assert release.wait(timeout=5)
-                return real_all_records()
+                return real_iter_records()
 
-            trail._backend.all_records = gated_all_records  # type: ignore[method-assign]
+            trail._backend.iter_records = gated_iter_records  # type: ignore[method-assign]
             verdicts: list = []
 
             def run_verify() -> None:
@@ -260,7 +271,7 @@ class TestContextTrailVerify:
             assert verdicts[0].intact
             assert verdicts[0].total_records == 1
             assert logged.is_set()
-            trail._backend.all_records = real_all_records  # type: ignore[method-assign]
+            trail._backend.iter_records = real_iter_records  # type: ignore[method-assign]
             final = trail.verify_chain()
             assert final.intact
             assert final.total_records == 2
@@ -574,6 +585,49 @@ class TestContextTrailErrorHandling:
 
         result = search("test")
         assert result == "result for test"
+
+
+class TestStrictSource:
+    def test_unknown_source_remains_permissive_by_default(self):
+        trail = ContextTrail(backend="memory")
+        try:
+            record = trail.log("test", source="retreiver:pinecone")
+            assert record is not None
+            assert record.entry.source == ContextSource.CUSTOM
+            assert record.entry.source_name == "pinecone"
+        finally:
+            trail.close()
+
+    def test_strict_source_rejects_unknown_source_independently_of_strict_mode(self):
+        trail = ContextTrail(backend="memory", strict_source=True)
+        try:
+            with pytest.raises(ValueError, match="Unknown context source"):
+                trail.log("test", source="retreiver:pinecone")
+
+            assert trail.summary()["total"] == 0
+            assert trail.error_count == 0
+        finally:
+            trail.close()
+
+    def test_strict_source_rejects_unknown_decorator_source(self):
+        trail = ContextTrail(backend="memory", strict_source=True)
+        try:
+            with pytest.raises(ValueError, match="Unknown context source"):
+                trail.track(source="retreiver:pinecone")
+        finally:
+            trail.close()
+
+    def test_disabled_track_skips_strict_source_validation(self, monkeypatch):
+        from provena import trail as trail_module
+
+        monkeypatch.setattr(trail_module, "_DISABLED", True)
+        trail = ContextTrail(backend="memory", strict_source=True)
+        try:
+            tracked = trail.track(source="retreiver:pinecone")(lambda: "result")
+            assert tracked() == "result"
+            assert trail.summary()["total"] == 0
+        finally:
+            trail.close()
 
 
 class TestContextTrailQuery:
@@ -1150,6 +1204,7 @@ class TestContextTrailConfigHash:
             {"max_age_days": 30},
             {"required_fields": ["source_url"]},
             {"temporal_detection": False},
+            {"strict_source": True},
             {"policies": [freshness_check(status="STALE")]},
         ],
     )
