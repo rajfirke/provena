@@ -695,7 +695,10 @@ class ContextTrail:
         return None
 
     def verify_chain(self) -> ChainVerdict:
-        """Verify the integrity of the entire hash chain.
+        """Verify links across the current record snapshot.
+
+        This checks only the hashed link fields; governance fields and
+        annotations outside that payload are not covered.
 
         Flushes pending buffered records, then reads the backend, both while
         holding the same lock as ``log()``. The backend captures the snapshot's
