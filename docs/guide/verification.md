@@ -1,20 +1,24 @@
 # Chain Verification
 
-Provena maintains a SHA-256 hash chain across all audit records, creating a
-tamper-evident log. If a record's hashed fields are modified, or a record is
-deleted or reordered, the chain breaks and verification fails. This gives you
+Provena maintains a SHA-256 hash chain across audit records. If a hashed link
+field is changed without updating its stored chain hash, a non-final record is
+deleted, or records are reordered, verification fails. Deleting the final
+record alone is not detectable from the remaining chain. This gives you
 tamper evidence for the recorded content digest, source, timestamp, and chain
-position. Because Provena does not store raw context, chain verification cannot
-independently recompute a content digest without the original input.
+position. Because Provena does not store raw context, chain verification
+cannot independently recompute a content digest without the original input.
 
 Chain verification does **not** cover every column on a record. The hash
 payload is only `previous_hash`, `content_hash`, `source`, and `timestamp`
 (see below). Governance columns outside that payload -- `provenance_status`,
 `freshness_status`, `source_name`, `metadata_json`, `config_hash`,
-`content_type`, `truncated`, and `content_hash_version` -- can be modified
-without breaking the chain. Chain verification proves a record's identity
-and ordering; it does not, on its own, prove every governance annotation
-attached to it is unchanged.
+`content_type`, `truncated`, `content_hash_version`, `provenance_json`, and
+`missing_fields` -- can be modified without breaking the chain. Rows in the
+separate `annotations` table are also outside the hash payload; changing or
+deleting them does not affect `verify_chain()`. Chain verification does not,
+on its own, prove every governance annotation attached to a record is
+unchanged. The record `id` is not hashed either; verification uses it to order
+records, so changing an ID without changing that order is not detected.
 
 ## How the Hash Chain Works
 
